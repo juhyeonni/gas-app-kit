@@ -53,7 +53,7 @@ export interface ResolveVersionOptions {
   explicit?: string | undefined
   cwd?: string
   /** Process environment. Only `CI` is read, to pick the fallback marker. */
-  processEnv?: NodeJS.ProcessEnv
+  processEnv?: Record<string, string | undefined>
 }
 
 export interface CollectBuildInfoOptions extends ResolveVersionOptions {

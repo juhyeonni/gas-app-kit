@@ -53,7 +53,7 @@ const OPTIONS = {
   version: { type: 'boolean', short: 'v' },
 } as const
 
-function usage(stream: NodeJS.WriteStream = process.stderr): void {
+function usage(stream: { write(text: string): unknown } = process.stderr): void {
   const width = Math.max(...Object.keys(COMMANDS).map((c) => c.length))
   stream.write('\nUsage: gas-app <command> [env] [options]\n\nCommands:\n')
   for (const [name, description] of Object.entries(COMMANDS)) {

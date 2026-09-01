@@ -30,7 +30,14 @@ export type EnvState = 'unprovisioned' | 'undeployed' | 'deployed'
 export interface LoadEnvsOptions {
   envsPath?: string | undefined
   cwd?: string
-  env?: NodeJS.ProcessEnv
+  /**
+   * Environment variables. `Record<string, string | undefined>` rather than
+   * `NodeJS.ProcessEnv` on purpose: that is an ambient global, and putting it in
+   * a published type forces every consumer's tsconfig to pull in `@types/node`
+   * globals or fail typechecking on *our* declarations. `process.env` is
+   * assignable to this, so nothing at a call site changes.
+   */
+  env?: Record<string, string | undefined>
 }
 
 /** A refusal the CLI prints as-is. Carries no stack trace worth showing a user. */

@@ -25,7 +25,7 @@ export interface AddEnvOptions {
   title?: string | undefined
   cwd?: string
   envsPath?: string | undefined
-  env?: NodeJS.ProcessEnv
+  env?: Record<string, string | undefined>
 }
 
 export interface AddEnvResult {

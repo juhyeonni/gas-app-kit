@@ -41,7 +41,7 @@ export interface GateResult {
 export interface RunGateOptions {
   cwd?: string
   skipChecks?: boolean
-  env?: NodeJS.ProcessEnv
+  env?: Record<string, string | undefined>
 }
 
 /**
