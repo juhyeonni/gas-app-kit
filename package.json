@@ -1,6 +1,6 @@
 {
   "name": "gas-app-kit",
-  "version": "0.1.1-rc.1",
+  "version": "0.1.1",
   "description": "Environment registry, build orchestration, deployment and rollback for Google Apps Script projects",
   "type": "module",
   "license": "MIT",
