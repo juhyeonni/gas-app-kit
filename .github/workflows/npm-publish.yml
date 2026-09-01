@@ -1,0 +1,74 @@
+# Publishes to npm when a GitHub release is published.
+#
+# Authentication is npm trusted publishing (OIDC): no NPM_TOKEN secret, and no
+# OTP prompt — the runner exchanges its short-lived OIDC token for publish
+# rights. That requires a one-time configuration on npmjs.com naming this
+# repository *and this filename*; renaming this file breaks publishing until the
+# configuration there is updated to match.
+#
+# Provenance is attached automatically (public repo + public package + GitHub
+# Actions). No --provenance flag is needed.
+name: npm publish
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write # required for OIDC; without it the publish is rejected
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          # Trusted publishing needs Node >= 22.14.0 and npm >= 11.5.1.
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'pnpm'
+
+      - name: Ensure npm supports trusted publishing
+        run: |
+          npm install -g npm@latest
+          npm --version
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # The tag is what humans read on the releases page; the version is what the
+      # registry serves. This tool exists partly because those two drift, so it
+      # refuses to publish when they disagree rather than papering over it.
+      - name: Release tag must match package.json
+        run: |
+          tag="${{ github.event.release.tag_name }}"
+          tag="${tag#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::Release tag '$tag' does not match package.json version '$pkg'. Fix one of them and re-run."
+            exit 1
+          fi
+
+      - name: Test
+        run: pnpm test
+
+      - name: Package checks
+        run: pnpm run check:publish
+
+      # A GitHub pre-release must never take the `latest` dist-tag: npm does not
+      # infer that from the semver string, so omitting --tag would hand every
+      # plain `npm install` a prerelease.
+      - name: Publish
+        run: |
+          if [ "${{ github.event.release.prerelease }}" = "true" ]; then
+            npm publish --tag rc
+          else
+            npm publish
+          fi
