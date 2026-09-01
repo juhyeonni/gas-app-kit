@@ -32,6 +32,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "prepare": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "node --test",
     "prepack": "pnpm run build",
@@ -45,5 +46,13 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/juhyeonni/gas-app-kit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/juhyeonni/gas-app-kit/issues"
+  },
+  "homepage": "https://github.com/juhyeonni/gas-app-kit#readme"
 }
