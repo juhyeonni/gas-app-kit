@@ -1,6 +1,6 @@
 {
   "name": "gas-app-kit",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Environment registry, build orchestration, deployment and rollback for Google Apps Script projects",
   "type": "module",
   "license": "MIT",
@@ -32,8 +32,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc",
-    "prepare": "tsc",
+    "build": "tsc --build --force",
+    "prepare": "tsc --build --force",
     "typecheck": "tsc --noEmit",
     "test": "node --test",
     "prepack": "pnpm run build",
