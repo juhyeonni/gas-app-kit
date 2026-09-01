@@ -32,6 +32,12 @@ jobs:
         with:
           # Trusted publishing needs Node >= 22.14.0 and npm >= 11.5.1.
           node-version: '22'
+          # Writes an .npmrc pointing at the public registry. It also sets
+          # NODE_AUTH_TOKEN to a literal placeholder because no token is passed —
+          # that is expected and harmless here: OIDC supplies the real
+          # credential, and the placeholder is never used. Verified end to end in
+          # the 2026-09-01 rehearsal, where the publish reached a version-conflict
+          # rejection rather than an auth failure.
           registry-url: 'https://registry.npmjs.org'
           cache: 'pnpm'
 

@@ -16,7 +16,7 @@
     "node": ">=20"
   },
   "bin": {
-    "gas-app": "./dist/cli.js"
+    "gas-app": "dist/cli.js"
   },
   "exports": {
     ".": {
