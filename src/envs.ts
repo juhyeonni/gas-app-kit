@@ -10,7 +10,7 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 
 export const ENVS_FILE = 'envs.json'
-export const ENVS_ENV_VAR = 'KANBEE_ENVS_JSON'
+export const ENVS_ENV_VAR = 'GAS_APP_ENVS_JSON'
 
 /** One deployable environment, after normalization. */
 export interface EnvEntry {
@@ -84,7 +84,7 @@ function parseRegistry(text: string, source: string): EnvRegistry {
 }
 
 /**
- * Read the registry. `KANBEE_ENVS_JSON` wins over the file verbatim and the
+ * Read the registry. `GAS_APP_ENVS_JSON` wins over the file verbatim and the
  * file is not read at all — the single knob that makes committing ids or not a
  * one-line policy decision.
  *

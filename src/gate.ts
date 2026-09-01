@@ -139,9 +139,9 @@ export function runGate({ cwd = process.cwd(), skipChecks = false, env = process
 
   // 1. typecheck. It always *runs*; a broken link only changes how a failure is
   //    classified. Skipping upfront on the mere presence of a broken symlink
-  //    silently disables typecheck wherever a stale link lingers — measured in
-  //    this consumer's main checkout, which carries a dead `@gas-task/core`
-  //    link from a package that was merged away, yet typechecks perfectly.
+  //    silently disables typecheck wherever a stale link lingers — measured on a
+  //    real monorepo carrying a dead workspace link from a package that had been
+  //    merged away, which nonetheless typechecks perfectly.
   if (!hasScript(cwd, 'typecheck')) {
     checks.push({ name: 'typecheck', status: 'absent', reason: 'no "typecheck" script' })
   } else if (runScript(cwd, 'typecheck')) {

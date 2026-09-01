@@ -78,7 +78,7 @@ test('a missing registry fails with a remedy and exit 1', () => {
 })
 
 test('the env var overrides the file for the CLI too', () => {
-  const { out } = run(['envs'], { env: { KANBEE_ENVS_JSON: JSON.stringify({ only: { scriptId: 'S' } }) } })
+  const { out } = run(['envs'], { env: { GAS_APP_ENVS_JSON: JSON.stringify({ only: { scriptId: 'S' } }) } })
   assert.match(out, /only/)
   assert.doesNotMatch(out, /staging/)
 })

@@ -78,19 +78,19 @@ test('checks run sequentially — typecheck completes before tests start', () =>
 
 test('a broken linked dependency degrades typecheck but still runs tests', () => {
   const cwd = consumer({ typecheck: FAIL, test: PASS })
-  breakLink(cwd, '@gws-emul', 'core')
+  breakLink(cwd, '@acme', 'core')
 
   const result = runGate({ cwd, env: {} })
 
   assert.equal(statusOf(result, 'typecheck'), 'degraded')
-  assert.match(result.checks[0]!.reason ?? '', /@gws-emul\/core/)
+  assert.match(result.checks[0]!.reason ?? '', /@acme\/core/)
   assert.equal(statusOf(result, 'test'), 'passed')
   assert.equal(result.passed, true, 'a structurally impossible typecheck is not a failure')
 })
 
 test('a degraded typecheck does not excuse failing tests', () => {
   const cwd = consumer({ typecheck: FAIL, test: FAIL })
-  breakLink(cwd, '@gws-emul', 'core')
+  breakLink(cwd, '@acme', 'core')
 
   const result = runGate({ cwd, env: {} })
 
@@ -99,10 +99,10 @@ test('a degraded typecheck does not excuse failing tests', () => {
 })
 
 test('a stale broken link does not disable a typecheck that actually works', () => {
-  // Measured in this consumer's main checkout: a dead `@gas-task/core` link
-  // left over from a merged package, alongside a typecheck that passes.
+  // Measured on a real monorepo: a dead workspace link left over from a package
+  // that had been merged away, alongside a typecheck that passes regardless.
   const cwd = consumer({ typecheck: PASS, test: PASS })
-  breakLink(cwd, '@gas-task', 'core')
+  breakLink(cwd, '@acme', 'legacy')
 
   const result = runGate({ cwd, env: {} })
 
@@ -138,11 +138,11 @@ test('a consumer with no linked dependencies never triggers the degrade path', (
 
 test('broken links inside workspace packages are found too', () => {
   const cwd = consumer({ typecheck: PASS, test: PASS })
-  const nested = path.join(cwd, 'packages', 'appscript', 'node_modules', '@gws-emul')
+  const nested = path.join(cwd, 'packages', 'appscript', 'node_modules', '@acme')
   fs.mkdirSync(nested, { recursive: true })
   fs.symlinkSync(path.join(cwd, 'nowhere'), path.join(nested, 'core'), 'dir')
 
-  assert.deepEqual(brokenLinks(cwd), ['@gws-emul/core'])
+  assert.deepEqual(brokenLinks(cwd), ['@acme/core'])
 })
 
 test('missing typecheck or test scripts are reported as absent, not failures', () => {
