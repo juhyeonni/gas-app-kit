@@ -1,0 +1,49 @@
+{
+  "name": "gas-app-kit",
+  "version": "0.0.0",
+  "description": "Environment registry, build orchestration, deployment and rollback for Google Apps Script projects",
+  "type": "module",
+  "license": "MIT",
+  "author": "juhyeonni",
+  "keywords": [
+    "google-apps-script",
+    "clasp",
+    "deploy",
+    "rollback",
+    "cli"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "gas-app": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test",
+    "prepack": "pnpm run build",
+    "check:publish": "publint && attw --pack --profile esm-only"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.2",
+    "@types/node": "^25.2.2",
+    "publint": "^0.3.24",
+    "typescript": "^5.9.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

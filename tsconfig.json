@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["es2023"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"],
+
+    // Source is run directly by Node during development (type stripping is
+    // default since v22.18 / v23.6) and compiled only for publishing.
+    // `erasableSyntaxOnly` forbids anything Node cannot strip — enums,
+    // namespaces, parameter properties, decorators.
+    "erasableSyntaxOnly": true,
+    // Imports are written with the `.ts` extension so Node resolves them
+    // as-is; tsc rewrites them to `.js` on emit. This pair is what makes
+    // "no build step in dev, one build step to publish" work at all.
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+
+    // ui.mjs is shared verbatim with gas-app-boilerplate (measured: 0 diff
+    // lines). It stays JavaScript so that stays true; tsc emits it as-is.
+    "allowJs": true,
+    "checkJs": false,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "verbatimModuleSyntax": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    // Outside outDir on purpose: `files: ["dist"]` would otherwise publish it.
+    "tsBuildInfoFile": "./.tsbuildinfo"
+  },
+  "include": ["src/**/*"]
+}
