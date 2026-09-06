@@ -44,6 +44,7 @@ const OPTIONS = {
   envs: { type: 'string' },
   'script-id': { type: 'string' },
   title: { type: 'string' },
+  type: { type: 'string' },
   force: { type: 'boolean' },
   'skip-checks': { type: 'boolean' },
   'no-build': { type: 'boolean' },
@@ -65,6 +66,7 @@ function usage(stream: { write(text: string): unknown } = process.stderr): void 
   stream.write('  --envs <path>   path to the environment registry (default: ./envs.json)\n')
   stream.write('  --script-id <id>  register an existing project instead of creating one\n')
   stream.write('  --title <text>    title for a newly created project (default: the env name)\n')
+  stream.write('  --type <type>     clasp project type for envs add (default: standalone)\n')
   stream.write('  --force           overwrite an existing registry entry\n')
   stream.write('  -h, --help      show this message\n')
   stream.write('  -v, --version   print the package version\n')
@@ -125,13 +127,14 @@ function main(argv: string[]): number {
     if (envName === 'add') {
       const name = positionals[2]
       if (!name) {
-        process.stderr.write('Usage: gas-app envs add <name> [--script-id <id>] [--title <t>] [--force]\n')
+        process.stderr.write('Usage: gas-app envs add <name> [--script-id <id>] [--title <t>] [--type <t>] [--force]\n')
         return EXIT_USAGE
       }
       const result = addEnv(name, {
         ...context,
         scriptId: values['script-id'],
         title: values.title,
+        type: values.type,
         force: values.force,
       })
       const ui = createUI('gas-app envs add')

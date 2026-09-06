@@ -45,6 +45,7 @@ policy decision rather than a code change.
 gas-app envs                   # every environment with its state: unprovisioned / undeployed / @version
 gas-app envs add dev           # create a new Apps Script project and register it
 gas-app envs add dev --script-id 1abc…   # …or register one that already exists
+gas-app envs add dev --type sheets       # …or create one bound to a new Spreadsheet/Doc/etc.
 gas-app open [env]             # editor and web-app URLs
 gas-app build <env>            # run your build with BUILD_ENV set, then stamp the output
 gas-app push <env>             # gate → build → verify the stamp → clasp push
@@ -52,6 +53,11 @@ gas-app deploy <env>           # push, then move the deployment pointer
 gas-app versions <env>         # what this environment can be rolled back to
 gas-app rollback <env> <n>     # repoint at version n — without building anything
 ```
+
+`envs add`'s `--type <type>` is passed straight through to `clasp create-script` (`standalone` is the
+default; `sheets`, `docs`, `slides`, `forms`, `webapp`, `api` are the others) — it creates a project
+bound to a new Spreadsheet/Doc/etc., and a bound `sheets` script lets server code use
+`SpreadsheetApp.getActiveSpreadsheet()` with no configuration.
 
 Global options: `--envs <path>` to point at a registry elsewhere, `-h`, `-v`.
 Per-command: `--skip-checks`, `--no-build`, `--description <text>`, `--yes`, `--force`.

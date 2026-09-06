@@ -102,3 +102,62 @@ test('the consumer repo’s .clasp.json and appsscript.json are untouched', () =
   assert.equal(fs.readFileSync(path.join(cwd, '.clasp.json'), 'utf-8'), '{"scriptId":"REPO"}')
   assert.equal(fs.readFileSync(path.join(cwd, 'appsscript.json'), 'utf-8'), '{"timeZone":"Asia/Tokyo"}')
 })
+
+/**
+ * A fake `clasp` on PATH, exercising the create path (--type reaches only
+ * `create-script`). Same shape as deploy.test.ts's fakeClasp.
+ */
+function fakeClasp(dir: string): string {
+  const bin = path.join(dir, 'fakebin')
+  fs.mkdirSync(bin, { recursive: true })
+  const log = path.join(dir, 'clasp-calls.txt')
+  fs.writeFileSync(
+    path.join(bin, 'clasp'),
+    `#!/usr/bin/env node
+const fs = require('fs')
+const args = process.argv.slice(2)
+fs.appendFileSync(${JSON.stringify(log)}, args.join(' ') + '\\n')
+const cmd = args[0]
+if (cmd === '--version') { process.exit(0) }
+if (cmd === 'show-authorized-user') { console.log(JSON.stringify({ user: 'test' })); process.exit(0) }
+if (cmd === 'create-script') { fs.writeFileSync('.clasp.json', JSON.stringify({ scriptId: 'S_NEW' })); process.exit(0) }
+process.exit(0)
+`,
+    { mode: 0o755 }
+  )
+  return log
+}
+
+const calls = (log: string): string[] =>
+  fs.existsSync(log) ? fs.readFileSync(log, 'utf-8').trim().split('\n').filter(Boolean) : []
+
+/** Run with the fake clasp first on PATH. */
+function withFakeClasp<T>(cwd: string, fn: () => T): T {
+  const previous = process.env.PATH
+  process.env.PATH = `${path.join(cwd, 'fakebin')}:${previous ?? ''}`
+  try {
+    return fn()
+  } finally {
+    process.env.PATH = previous
+  }
+}
+
+test('--type is passed through to clasp create-script when given', () => {
+  const cwd = workspace()
+  const log = fakeClasp(cwd)
+
+  withFakeClasp(cwd, () => addEnv('dev', { type: 'sheets', cwd, env: {} }))
+
+  const createCall = calls(log).find((c) => c.startsWith('create-script'))
+  assert.match(createCall!, /--type sheets/)
+})
+
+test('--type is omitted from clasp create-script when not given', () => {
+  const cwd = workspace()
+  const log = fakeClasp(cwd)
+
+  withFakeClasp(cwd, () => addEnv('dev', { cwd, env: {} }))
+
+  const createCall = calls(log).find((c) => c.startsWith('create-script'))
+  assert.doesNotMatch(createCall!, /--type/)
+})

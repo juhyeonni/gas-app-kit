@@ -23,6 +23,8 @@ export interface AddEnvOptions {
   force?: boolean | undefined
   /** Title for a newly created project. Defaults to the env name. */
   title?: string | undefined
+  /** clasp project type, e.g. `standalone` (default), `sheets`, `docs`, `slides`, `forms`, `webapp`, `api`. */
+  type?: string | undefined
   cwd?: string
   envsPath?: string | undefined
   env?: Record<string, string | undefined>
@@ -75,7 +77,7 @@ function preflight(): void {
  * Create a project from a scratch directory and return its scriptId, read out
  * of the `.clasp.json` clasp leaves behind there. Nothing is parsed from stdout.
  */
-function createInIsolation(title: string, buildDir: string): string {
+function createInIsolation(title: string, buildDir: string, type?: string): string {
   let scratch: string
   try {
     scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'gas-app-create-'))
@@ -85,11 +87,9 @@ function createInIsolation(title: string, buildDir: string): string {
   }
 
   try {
-    const result = spawnSync(
-      'clasp',
-      ['create-script', '--title', title, '--rootDir', buildDir],
-      { cwd: scratch, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] }
-    )
+    const args = ['create-script', '--title', title, '--rootDir', buildDir]
+    if (type) args.push('--type', type)
+    const result = spawnSync('clasp', args, { cwd: scratch, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] })
     if (result.error) throw new EnvsError(`clasp create-script failed: ${result.error.message}`)
     if (result.status !== 0) {
       const detail = (result.stderr || result.stdout || '').trim().split('\n').slice(0, 3).join(' ')
@@ -133,7 +133,7 @@ function serialize(registry: EnvRegistry): string {
  * the create-vs-register decision instead of re-implementing them.
  */
 export function addEnv(name: string, options: AddEnvOptions = {}): AddEnvResult {
-  const { scriptId, force = false, title, cwd = process.cwd(), envsPath, env = process.env } = options
+  const { scriptId, force = false, title, type, cwd = process.cwd(), envsPath, env = process.env } = options
 
   if (!name) throw new EnvsError('An environment name is required: gas-app envs add <name>')
 
@@ -160,7 +160,7 @@ export function addEnv(name: string, options: AddEnvOptions = {}): AddEnvResult 
     if (!resolvedScriptId) throw new EnvsError('--script-id was given but is empty.')
   } else {
     preflight()
-    resolvedScriptId = createInIsolation(title ?? name, DEFAULT_BUILD_DIR)
+    resolvedScriptId = createInIsolation(title ?? name, DEFAULT_BUILD_DIR, type)
     created = true
   }
 
