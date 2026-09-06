@@ -65,6 +65,21 @@ Per-command: `--skip-checks`, `--no-build`, `--description <text>`, `--yes`, `--
 Exit codes: `0` success, `1` failure, `2` usage error. Every refused operation is a non-zero exit —
 there is no warn-and-continue path.
 
+## Building the web app
+
+`buildWebApp()` produces the Apps Script web-app bundle — client through Vite, server through
+esbuild, then HTML that inlines both for `HtmlService` — so your own `build` script (the one `gas-app
+build <env>` runs) can be two lines instead of a copy of everyone else's `scripts/build.mjs`:
+
+```js
+import { buildWebApp } from 'gas-app-kit'
+await buildWebApp()
+```
+
+It reads `src/server/index.ts` and your Vite client entry, and writes `Code.gs`, `index.html`,
+`app.html` and `appsscript.json` into `build/`. `vite` and `esbuild` are optional peer dependencies —
+install them only if you call this function; everything else in gas-app-kit works without them.
+
 ## What it actually guards
 
 - **The artefact belongs to the environment.** `build` writes a stamp naming the environment it built
