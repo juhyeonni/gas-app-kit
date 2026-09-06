@@ -113,9 +113,16 @@ function promptYesNo(question: string): boolean {
   const buffer = Buffer.alloc(8)
   let bytes: number
   try {
-    bytes = fs.readSync(0, buffer, 0, buffer.length, null)
+    // Not fd 0: touching `process.stdin` above put it in non-blocking mode, so
+    // `readSync(0)` throws EAGAIN before the user can type. `/dev/tty` blocks.
+    const tty = fs.openSync('/dev/tty', 'r')
+    try {
+      bytes = fs.readSync(tty, buffer, 0, buffer.length, null)
+    } finally {
+      fs.closeSync(tty)
+    }
   } catch {
-    // No readable stdin is a decline, not a crash.
+    // No readable terminal is a decline, not a crash.
     return false
   }
   return /^y/i.test(buffer.toString('utf-8', 0, bytes).trim())
