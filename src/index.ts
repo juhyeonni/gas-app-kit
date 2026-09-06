@@ -42,6 +42,16 @@ export { withManifest, ManifestDriftError, MANIFEST_FILE } from './manifest.ts'
 export { addEnv, type AddEnvOptions, type AddEnvResult } from './envs-add.ts'
 export { resolveBuildCommand, runBuild, type BuildTarget, type RunBuildResult } from './build.ts'
 export {
+  buildWebApp,
+  stripGasSyntax,
+  escapeJsForGas,
+  escapeCssForGas,
+  renderBanner,
+  renderIndexHtml,
+  type BuildWebAppOptions,
+  type BuildWebAppResult,
+} from './build-web-app.ts'
+export {
   push,
   deploy,
   type PushOptions,
