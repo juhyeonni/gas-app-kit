@@ -16,6 +16,7 @@ import { withManifest } from './manifest.ts'
 import { resolveBuildCommand, runBuild } from './build.ts'
 import { runGate, type GateResult } from './gate.ts'
 import { claspJson, type DeploymentRow } from './clasp.ts'
+import { webAppUrl } from './links.ts'
 import { createUI } from './ui.mjs'
 
 export interface PushOptions extends LoadEnvsOptions {
@@ -197,5 +198,6 @@ export function deploy(envName: string | undefined, options: DeployOptions = {})
   }
 
   ui.item(`deployed "${entry.name}" → ${deploymentId} (${description})`)
+  if (deploymentId) ui.info(webAppUrl(deploymentId))
   return { ...pushed, deploymentId, versionNumber: result.data.versionNumber, description, persisted }
 }

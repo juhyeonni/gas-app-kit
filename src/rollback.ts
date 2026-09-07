@@ -28,6 +28,7 @@ import {
   type VersionRowRaw,
 } from './clasp.ts'
 import { writeClaspConfig } from './project.ts'
+import { webAppUrl } from './links.ts'
 import { withManifest } from './manifest.ts'
 import { createUI } from './ui.mjs'
 
@@ -268,5 +269,6 @@ export function rollback(
   }
 
   ui.item(`"${entry.name}" now serves version ${target.versionNumber} (${target.description})`)
+  ui.info(webAppUrl(entry.deploymentId))
   return { entry, target, noop: false }
 }
