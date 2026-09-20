@@ -30,12 +30,20 @@ export interface PushOptions extends LoadEnvsOptions {
   skipChecks?: boolean
   /** Push whatever is already built and stamped. Skips gate and build. */
   noBuild?: boolean
+  /**
+   * Run everything this tool controls, then stop before anything leaves the
+   * machine. The policy gate is evaluated, never bypassed — the point is to see
+   * the refusal safely, not to route around it.
+   */
+  dryRun?: boolean
 }
 
 export interface PushResult {
   entry: EnvEntry
   files: number
   gate: GateResult | null
+  /** True when the clasp call was not made because this was a dry run. */
+  dryRun?: boolean
 }
 
 /** Run clasp against one env's generated config. */
@@ -65,7 +73,7 @@ function assertLocalDeployAllowed(entry: EnvEntry, env: Record<string, string | 
 }
 
 export function push(envName: string | undefined, options: PushOptions = {}): PushResult {
-  const { cwd = process.cwd(), skipChecks = false, noBuild = false, env = process.env } = options
+  const { cwd = process.cwd(), skipChecks = false, noBuild = false, dryRun = false, env = process.env } = options
   const ui = createUI('gas-app push')
 
   const entry = resolveEnv(loadEnvs({ ...options, cwd, env }), envName)
@@ -89,6 +97,16 @@ export function push(envName: string | undefined, options: PushOptions = {}): Pu
   // 3. Assert — the last chance to stop before anything leaves the machine.
   const registryNames = Object.keys(loadEnvs({ ...options, cwd, env }))
   assertEnvMatch(entry, registryNames, { cwd, buildDir })
+
+  // 3a. A dry run stops exactly here. Everything above is local and repeatable;
+  //     the next line is the first thing that leaves the machine, which is what
+  //     makes this boundary the honest one to offer.
+  if (dryRun) {
+    ui.item(`"${entry.name}" would be pushed — gate, build and stamp all pass`)
+    ui.info(`target: ${entry.scriptId}`)
+    ui.info('dry run — nothing was uploaded')
+    return { entry, files: 0, gate, dryRun: true }
+  }
 
   // 4. Push, with the manifest guarded around the clasp call only — the build
   //    never touches appsscript.json, so guarding it too would be noise.
@@ -164,6 +182,27 @@ export function deploy(envName: string | undefined, options: DeployOptions = {})
     `Deploy "${entry.name}" as "${description}" — this creates a new immutable version` +
     (options.description === undefined && !shortSha ? ', with no git commit recorded' : '') +
     '?'
+  // A dry run changes nothing, so there is nothing to confirm. Asking anyway
+  // would train people to answer the prompt without reading it.
+  if (options.dryRun) {
+    const pushed = push(envName, options)
+    ui.item(
+      entry.deploymentId
+        ? `would move "${entry.name}"'s existing deployment to a new version`
+        : `would create the first deployment for "${entry.name}"`
+    )
+    ui.info(`label: ${description}`)
+    ui.info('dry run — no version was created and no pointer moved')
+    return {
+      ...pushed,
+      deploymentId: entry.deploymentId,
+      versionNumber: undefined,
+      description,
+      persisted: false,
+      dryRun: true,
+    }
+  }
+
   if (!yes && !inCI && !confirm(question)) {
     // Nothing changed, so this is not a failure. exit 1 here would be a CI false positive.
     ui.info('declined — nothing deployed')
