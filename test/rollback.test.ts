@@ -33,7 +33,13 @@ function workspace(envs: unknown = ENVS) {
  * A clasp stand-in on PATH. `list-deployments` returns `rows`; every other
  * invocation echoes its argv to `log` so the assertions can read what was run.
  */
-function withFakeClasp<T>(rows: unknown[], run: (log: string) => T, versionRows: unknown[] = VERSIONS): T {
+function withFakeClasp<T>(
+  rows: unknown[],
+  run: (log: string) => T,
+  versionRows: unknown[] = VERSIONS,
+  /** Override what a write replies. Null means "echo back what was asked for". */
+  writeReply: unknown = null
+): T {
   const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'gas-app-bin-'))
   const log = path.join(bin, 'calls.log')
   const script = `#!/usr/bin/env node
@@ -44,6 +50,8 @@ if (args[0] === 'list-versions') {
   console.log(JSON.stringify(${JSON.stringify(versionRows)}))
 } else if (args[0] === 'list-deployments') {
   console.log(JSON.stringify(${JSON.stringify(rows)}))
+} else if (${writeReply === null ? 'false' : 'true'}) {
+  console.log(JSON.stringify(${JSON.stringify(writeReply)}))
 } else {
   console.log(JSON.stringify({ deploymentId: args[args.indexOf('--deploymentId') + 1], versionNumber: Number(args[args.indexOf('--versionNumber') + 1]) }))
 }
@@ -286,4 +294,44 @@ test('rollback honours gasApp.buildDir rather than assuming the default', () => 
 
   const config = JSON.parse(fs.readFileSync(path.join(cwd, 'clasp.dev.json'), 'utf-8'))
   assert.equal(config.rootDir, 'dist')
+})
+
+test('the success line is backed by what the write replied, not by what it asked', () => {
+  const cwd = workspace()
+  const result = withFakeClasp(ROWS, () => rollback('dev', 1, { cwd, env: {}, yes: true }))
+
+  assert.equal(result.noop, false)
+  assert.equal(result.target.versionNumber, 1)
+  assert.equal(result.confirmed, true, 'clasp echoed the version, so the claim is verified')
+})
+
+test('a write that lands on a different version refuses instead of claiming success', () => {
+  // Rare, but the alternative is printing "now serves version 1" about a
+  // deployment that serves something else — during an incident.
+  const cwd = workspace()
+  assert.throws(
+    () =>
+      withFakeClasp(
+        ROWS,
+        () => rollback('dev', 1, { cwd, env: {}, yes: true }),
+        undefined,
+        { deploymentId: 'AKfyV2', versionNumber: 3 }
+      ),
+    /aimed "dev" at version 1, but clasp reports the deployment now serves version 3/
+  )
+})
+
+test('a reply that carries no version still succeeds, and says it is unconfirmed', () => {
+  // clasp's reply shape has changed before. An absent field is not a mismatch,
+  // and refusing here would report a rollback that worked as a failure.
+  const cwd = workspace()
+  const result = withFakeClasp(
+    ROWS,
+    () => rollback('dev', 1, { cwd, env: {}, yes: true }),
+    undefined,
+    { deploymentId: 'AKfyV2' }
+  )
+
+  assert.equal(result.noop, false)
+  assert.equal(result.confirmed, false)
 })

@@ -9,6 +9,92 @@ Findings from a competitive-landscape and CLI UX review: the tool measured again
 `@google/aside`, `ascol` and a raw clasp v3 pipeline, and its own CLI read against
 the conventions every other CLI follows.
 
+### ⚠️ Breaking
+
+- **The library surface is narrowed.** The main entry point re-exported everything in `src/` — 44
+  values and 29 types — which made `escapeCssForGas`, `brokenLinks`, `writeStamp` and the CLI's own
+  output helpers into public API by accident of being in the barrel file. Concretely, `createUI`
+  being exported meant the tool's output format could not be tidied without a breaking change, and
+  `buildWebApp`'s internals were frozen despite that function being documented as optional and
+  replaceable.
+
+  The main entry is now a choice: the registry, provisioning, the operations, build identity,
+  `runDoctor` / `runGate`, `claspJson` / `listDeployments`, the URL helpers and `buildWebApp`.
+  Everything else moves to **`gas-app-kit/internal`**, which carries no compatibility promise — a
+  removal would be worse than a move, so nothing is gone. A test pins both lists, because this
+  happened by accident once already. ([#54])
+
+### Added
+
+- **`gas-app <command> --help`** prints that command on its own: its usage, the flags it takes, and
+  the behaviour a flag list cannot convey — which commands confirm, what `rollback` does when the
+  version is omitted, what `envs add` creates in your Drive. It printed the global page before,
+  which is eleven options of which `versions` accepts two. The help renders from the same list the
+  stray-flag check reads, so a flag cannot be accepted by a command whose help omits it. ([#41])
+- **`gas-app promote <from> <to> [version]`** — ship the exact code another environment verified,
+  without rebuilding. `deploy production` rebuilds from the working tree, so the bytes staging
+  approved and the bytes production received were never the same artefact, only at best the same
+  commit — which sat badly with the project's headline guarantee that an artefact belongs to its
+  environment. The stamp proved an artefact was built *for* production; nothing proved it was the
+  one staging approved.
+
+  Environments here are separate Apps Script projects and a version number belongs to a script, so
+  this is a code move rather than a pointer move: it fetches the immutable version's source, pushes
+  it to the target and cuts a version there. The target gets its own, unrelated version number, and
+  the label records the origin. Like `rollback`, it imports none of the build path. `@HEAD` is
+  refused as a source, and the target's `allowLocalDeploy` gates it — a promotion replaces that
+  script's HEAD exactly as a deploy does. ([#44])
+- **`gas-app diff <env>`** — compare an environment against your build and find out whether someone
+  edited the script in the Apps Script editor. Nothing noticed before: the deployment pointer does
+  not move when someone edits HEAD, so `envs` still reported a version while the next `push` would
+  overwrite the edit with no diff and no warning. Read-only — it pulls into a temporary directory,
+  never the working tree, because a pull into `rootDir` would destroy the build being compared.
+  Exits 1 on a difference, like `git diff --exit-code`, so CI can use it. Files are matched by name
+  without the extension, because a `Code.gs` that was pushed comes back from a pull as `Code.js`
+  (verified against a real project), and `appsscript.json` is reported separately because clasp
+  normalises the manifest on push. ([#52])
+- **`gas-app doctor`** — clasp's presence and major version, who you are authenticated as, where
+  the registry came from and whether `$GAS_APP_ENVS_JSON` has made it read-only, the build command
+  and directory, the stamp, and each environment's state. All of it was previously discoverable
+  only by running a command that wanted to do something else and reading its refusal; the clasp v3
+  check in particular existed only inside `envs add`, so a v2 install was named clearly there and
+  failed deep inside clasp everywhere else. Read-only, `--json`, and it exits non-zero only for
+  something that makes every remote command impossible — not having built yet is a state. ([#50])
+- **`--dry-run` on `push` and `deploy`.** Runs the policy check, the gate, your build and the stamp
+  verification, then stops before the first thing that would leave the machine. The policy flag is
+  evaluated, not bypassed: `push production --dry-run` refuses exactly as the real command would, so
+  production does not have to be your test case. `deploy --dry-run` also reports the label it would
+  use and whether it would create a deployment or move one, and asks nothing — there is nothing to
+  confirm. ([#51])
+- **`--json` on `envs` and `versions`.** One object to stdout and nothing else, so a pipeline can
+  trust that stdout parses or the command failed. A version that could not be read is `null` with a
+  `degraded` field saying why — "could not ask" and "no version" are different answers. Refusals
+  stay on stderr with the exit codes they had. ([#43])
+
+
+### Documentation
+
+- **Per-environment configuration is named as out of scope, with the reason.** Script Properties are
+  the Apps Script mechanism for it, and the Apps Script REST API has no properties endpoint — so a
+  freshly registered environment is deployable but unconfigured, and setting them is a step you own.
+  Recorded so it is not re-derived. ([#53])
+
+### Fixed
+
+- **Piping into a reader that stops early no longer ends in a stack trace.** `gas-app --help |
+  head -3` failed with an unhandled EPIPE, reproducibly, for a command that did its job. A closed
+  reader is not a refusal and no longer exits like one. ([#57])
+- **`rollback` reports what the write replied, not what it asked for.** `create-deployment --json`
+  echoes the row it created — `deploy` already trusts that row's `versionNumber`, while `rollback`
+  printed "now serves version N" from the argument alone. A reply naming a different version now
+  refuses and says which one, rather than making a false claim during an incident; a reply carrying
+  no version still succeeds, because refusing there would report a rollback that worked as a
+  failure. ([#56])
+- **`rollback` says its result may take a moment to be visible.** Google reports the moved pointer
+  on a lag, so the next `gas-app envs` could still show the previous version — which under incident
+  pressure reads as "the rollback did not work" and invites a second one, which did not take the
+  already-there branch either and wrote again. ([#56])
+
 ### Fixed
 
 - **`envs.json` keys this tool does not recognise are no longer deleted.** The registry was
@@ -187,3 +273,13 @@ First published release.
 [#39]: https://github.com/juhyeonni/gas-app-kit/issues/39
 [#40]: https://github.com/juhyeonni/gas-app-kit/issues/40
 [#42]: https://github.com/juhyeonni/gas-app-kit/issues/42
+[#41]: https://github.com/juhyeonni/gas-app-kit/issues/41
+[#43]: https://github.com/juhyeonni/gas-app-kit/issues/43
+[#56]: https://github.com/juhyeonni/gas-app-kit/issues/56
+[#57]: https://github.com/juhyeonni/gas-app-kit/issues/57
+[#50]: https://github.com/juhyeonni/gas-app-kit/issues/50
+[#51]: https://github.com/juhyeonni/gas-app-kit/issues/51
+[#53]: https://github.com/juhyeonni/gas-app-kit/issues/53
+[#54]: https://github.com/juhyeonni/gas-app-kit/issues/54
+[#52]: https://github.com/juhyeonni/gas-app-kit/issues/52
+[#44]: https://github.com/juhyeonni/gas-app-kit/issues/44

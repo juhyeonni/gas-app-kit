@@ -258,3 +258,63 @@ test('deploy without a terminal refuses instead of confirming on the user’s be
   }
   assert.deepEqual(calls(log), [], 'nothing was pushed and nothing was deployed')
 })
+
+test('a dry run stops before clasp, and never reaches it', () => {
+  const { cwd, log } = workspace(DEV_ONLY)
+
+  withFakeClasp(cwd, () => push('dev', { cwd, env: {} }))
+  assert.equal(calls(log).length, 1, 'the control: a real push does call clasp')
+
+  fs.rmSync(log, { force: true })
+  const dry = withFakeClasp(cwd, () => push('dev', { cwd, env: {}, dryRun: true }))
+
+  assert.equal(dry.dryRun, true)
+  assert.equal(dry.files, 0)
+  assert.deepEqual(calls(log), [], 'a dry run makes no clasp call at all')
+})
+
+test('a dry run still evaluates the policy gate rather than routing around it', () => {
+  // The whole point is to see the refusal safely; a dry run that ignored the
+  // flag would answer a question nobody asked.
+  const { cwd } = workspace({ dev: { scriptId: 'S_DEV', allowLocalDeploy: false } })
+  assert.throws(
+    () => withFakeClasp(cwd, () => push('dev', { cwd, env: {}, dryRun: true })),
+    /allowLocalDeploy/
+  )
+})
+
+test('a dry run still refuses a build stamped for another env', () => {
+  const { cwd, log } = workspace({ ...DEV_ONLY, production: { scriptId: 'S_PRD', allowLocalDeploy: true } })
+  withFakeClasp(cwd, () => push('dev', { cwd, env: {} }))
+  fs.rmSync(log, { force: true })
+
+  assert.throws(
+    () => withFakeClasp(cwd, () => push('production', { cwd, env: {}, noBuild: true, dryRun: true })),
+    /Build\/environment mismatch/
+  )
+  assert.deepEqual(calls(log), [])
+})
+
+test('deploy --dry-run creates no version and asks nothing', () => {
+  const { cwd, log } = workspace(DEV_ONLY)
+  let asked = 0
+
+  const result = withFakeClasp(cwd, () =>
+    deploy('dev', {
+      cwd,
+      env: {},
+      dryRun: true,
+      confirm: () => {
+        asked += 1
+        return true
+      },
+    })
+  )
+
+  assert.equal(asked, 0, 'nothing is changing, so there is nothing to confirm')
+  assert.equal(result.dryRun, true)
+  assert.equal(result.versionNumber, undefined)
+  assert.equal(result.persisted, false)
+  assert.ok(result.description.length > 0, 'the label it would use is still reported')
+  assert.deepEqual(calls(log), [])
+})

@@ -184,3 +184,124 @@ test('a filesystem failure is a refusal, not a raw Node stack trace', () => {
   assert.match(out, /ENOENT/)
   assert.doesNotMatch(out, /at Module\./, 'the stack trace must not reach the user')
 })
+
+test('--help on a command shows that command, not the global page', () => {
+  const { status, stdout } = run(['push', '--help'])
+  assert.equal(status, 0)
+  assert.match(stdout, /Usage: gas-app push <env>/)
+  assert.match(stdout, /--skip-checks/)
+  assert.match(stdout, /--no-build/)
+  assert.doesNotMatch(stdout, /--script-id/, 'a flag push does not take must not be listed')
+  assert.doesNotMatch(stdout, /^Commands:/m, 'the command list belongs to the global page')
+})
+
+test('envs add has its own help, separate from the envs listing', () => {
+  const { status, stdout } = run(['envs', 'add', '--help'])
+  assert.equal(status, 0)
+  assert.match(stdout, /Usage: gas-app envs add <name>/)
+  for (const flag of ['--script-id', '--title', '--type', '--force']) {
+    assert.match(stdout, new RegExp(flag.replace(/-/g, '\\-')))
+  }
+})
+
+test('bare --help still lists every command', () => {
+  const { status, stdout } = run(['--help'])
+  assert.equal(status, 0)
+  assert.match(stdout, /Commands:/)
+  assert.match(stdout, /rollback/)
+})
+
+test('a command’s help and its accepted flags are the same list', () => {
+  // The help is rendered from the list the stray-flag check reads, so these
+  // cannot drift: --json is in versions' help and accepted, --yes is neither.
+  assert.match(run(['versions', '--help']).stdout, /--json/)
+  assert.equal(run(['versions', 'dev', '--yes']).status, 2)
+})
+
+test('envs --json prints one parseable object and nothing else', () => {
+  const { status, stdout } = run(['envs', '--json'])
+  assert.equal(status, 0)
+  const parsed = JSON.parse(stdout)
+  assert.deepEqual(Object.keys(parsed), ['dev', 'staging', 'fresh'])
+  assert.equal(parsed.staging.state, 'undeployed')
+  assert.equal(parsed.fresh.state, 'unprovisioned')
+})
+
+test('--json says why a version is unknown rather than leaving it blank', () => {
+  const { stdout } = run(['envs', '--json'])
+  const dev = JSON.parse(stdout).dev
+  assert.equal(dev.state, 'deployed')
+  assert.equal(dev.versionNumber, null, 'null, not omitted — "could not ask" is not "no version"')
+  assert.match(dev.degraded, /clasp not found on PATH/)
+})
+
+test('a refused --json run writes no JSON at all', () => {
+  // Either stdout parses or the command failed; never half an object.
+  const { status, stdout } = run(['versions', 'dev', '--json'])
+  assert.equal(status, 1)
+  assert.equal(stdout.trim(), '')
+})
+
+test('a reader that stops early does not produce a crash', () => {
+  const result = spawnSync('sh', ['-c', `"${process.execPath}" "${BIN}" --help | head -3`], {
+    encoding: 'utf-8',
+    env: { ...process.env, PATH: process.env.PATH ?? '' },
+  })
+  assert.doesNotMatch(result.stderr, /EPIPE/)
+  assert.match(result.stdout, /Usage: gas-app/)
+})
+
+test('doctor fails when clasp cannot be found, and says how to install it', () => {
+  // `run` empties PATH, so this is the "clasp is missing" case by construction.
+  const { status, out } = run(['doctor'])
+  assert.equal(status, 1)
+  assert.match(out, /clasp/)
+  assert.match(out, /@google\/clasp/)
+  assert.match(out, /not checked — clasp is unavailable/, 'auth is not guessed at when clasp is absent')
+})
+
+test('doctor --json carries the levels and an ok verdict', () => {
+  const { status, stdout } = run(['doctor', '--json'])
+  assert.equal(status, 1)
+  const result = JSON.parse(stdout)
+  assert.equal(result.ok, false)
+  assert.equal(result.checks.find((c) => c.name === 'clasp').level, 'fail')
+  // Registered-but-unprovisioned is a state, not a defect: it must not fail the run.
+  assert.equal(result.checks.find((c) => c.name === 'env:fresh').level, 'warn')
+})
+
+test('doctor reports a missing registry as the failure it is', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gas-app-doctor-'))
+  const { status, out } = run(['doctor'], { cwd: dir })
+  assert.equal(status, 1)
+  assert.match(out, /any parent directory/)
+})
+
+test('--dry-run is accepted by push and deploy, and by nothing else', () => {
+  assert.match(run(['push', '--help']).stdout, /--dry-run/)
+  assert.match(run(['deploy', '--help']).stdout, /--dry-run/)
+  assert.equal(run(['rollback', 'dev', '1', '--dry-run']).status, 2)
+  assert.equal(run(['build', 'dev', '--dry-run']).status, 2)
+})
+
+test('every flag’s description names every command that takes it', () => {
+  // --json said "envs, versions" after doctor and diff were given it; --yes
+  // said "deploy, rollback" after promote was. A shared description map only
+  // prevents that if something checks the descriptions against the commands.
+  const COMMANDS = ['doctor', 'envs', 'open', 'diff', 'build', 'push', 'deploy', 'promote', 'versions', 'rollback']
+  const GLOBAL = ['--envs <path>', '-h, --help', '-v, --version']
+
+  for (const command of COMMANDS) {
+    const { stdout } = run([command, '--help'])
+    const options = stdout.slice(stdout.indexOf('Options:')).split('\n').slice(1)
+    for (const line of options) {
+      const flag = line.trim().split(/\s\s+/)[0]
+      if (!flag?.startsWith('-') || GLOBAL.includes(flag)) continue
+      assert.match(
+        line,
+        new RegExp(`\\b${command}\\b`),
+        `${command} accepts ${flag}, so ${flag}'s description must name it — got: ${line.trim()}`
+      )
+    }
+  }
+})

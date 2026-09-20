@@ -102,14 +102,17 @@ to put back into the variable's source. Set it in CI, not in your shell profile.
 ## Commands
 
 ```bash
+gas-app doctor                 # is this set up? clasp, auth, registry, build, stamp
 gas-app envs                   # every environment with its state
 gas-app envs add dev           # create a new Apps Script project and register it
 gas-app envs add dev --script-id 1abc…   # …or register one that already exists
 gas-app envs add dev --type sheets       # …or create one bound to a new Spreadsheet/Doc/etc.
 gas-app open [env]             # editor and web-app URLs
+gas-app diff <env>             # did someone edit this script in the Apps Script editor?
 gas-app build <env>            # run your build with BUILD_ENV set, then stamp the output
 gas-app push <env>             # gate → build → verify the stamp → clasp push
 gas-app deploy <env>           # push, then create a version and move the deployment pointer
+gas-app promote <a> <b>        # ship the exact code <a> verified, without rebuilding
 gas-app versions <env>         # what this environment can be rolled back to
 gas-app rollback <env> <n>     # repoint at version n — without building anything
 ```
@@ -131,16 +134,51 @@ rather than something silently ignored:
 | --- | --- |
 | `--envs <path>` | all — point at a registry elsewhere |
 | `--script-id`, `--title`, `--type`, `--force` | `envs add` |
-| `--skip-checks`, `--no-build` | `push`, `deploy` |
+| `--skip-checks`, `--no-build`, `--dry-run` | `push`, `deploy` |
 | `--description <text>` | `deploy` — the deployment label, otherwise derived |
-| `--yes` | `deploy`, `rollback` |
+| `--yes` | `deploy`, `promote`, `rollback` |
+| `--json` | `doctor`, `diff`, `envs`, `versions` — print the result for a machine instead of for reading |
+
+`gas-app <command> --help` prints one command on its own: its usage, the flags it takes, and the
+behaviour a flag list cannot convey — which commands confirm, what `rollback` does with no version,
+what `envs add` creates in your Drive.
 
 To stamp a deployment with a version of your own, use `--description`. `--version` is the boolean
 "print the gas-app-kit version" and takes no value.
 
+`--json` writes one object to stdout and nothing else, so a pipeline can trust that stdout parses
+or the command failed. Refusals stay on stderr with the exit codes they always had, and a version
+that could not be read is `null` with a `degraded` field saying why — "could not ask" and "no
+version" are different answers:
+
+```bash
+gas-app envs --json | jq -r '.production.versionNumber'
+```
+
+`--dry-run` runs everything this tool controls — the policy flag, the gate, your build, the stamp
+check — and stops before the first thing that would leave the machine. The flag is **evaluated, not
+bypassed**: seeing the refusal is the point, so `push production --dry-run` refuses exactly as the
+real thing would, without needing production to be your test case.
+
 Exit codes: `0` success, `1` failure, `2` usage error. Every refused operation is a non-zero exit —
 there is no warn-and-continue path. An environment that is merely *not deployed yet* is a state, not
 a refusal: `open` prints what it has and exits `0`.
+
+## Per-environment configuration is not in here
+
+This registry holds identifiers and policy flags. It does not hold your API keys, spreadsheet ids
+or endpoint URLs, and `envs add` does not set them: in Apps Script those live in **Script
+Properties**, and you set them per project under *Project Settings* in the editor.
+
+That is not an omission waiting to be filled in a patch release. The Apps Script REST API has no
+properties endpoint — the whole surface is projects, versions, deployments, `scripts.run` and
+processes — so `PropertiesService` is reachable only from inside the script itself. A CLI can only
+get at it by running a function in the deployed project, which needs the script published as an API
+executable against a standard GCP project. That is a large thing to require of every user, so this
+tool does not.
+
+What follows from it: a freshly registered environment is deployable but **unconfigured**, and
+nothing here will tell you so. If your code reads Script Properties, setting them is a step you own.
 
 ## Coming from a raw clasp pipeline
 
@@ -182,6 +220,61 @@ What you gain is the part ASIDE leaves out: more than two environments, a policy
 production writes off laptops, a refusal when the artefact in `build/` was made for a different
 environment, and `rollback`.
 
+## Promoting what staging verified
+
+`deploy production` rebuilds from your working tree, so the bytes staging approved and the bytes
+production receives are never the same artefact — only, at best, the same commit. A rebuild
+re-resolves dependencies, re-runs whatever your build does with timestamps and `BUILD_ENV`, and
+picks up anything that changed in the tree meanwhile. It also runs the build at the moment it is
+least wanted: after the code is already known good.
+
+```bash
+gas-app promote staging production        # the version staging currently serves
+gas-app promote staging production 11     # or a specific one
+```
+
+It fetches the source of that immutable version, pushes it to the target and cuts a version there.
+**Nothing is rebuilt** — like `rollback`, it imports none of the build path, because needing a
+buildable tree to ship known-good code defeats the point.
+
+Be clear about what it is. Environments here are **separate Apps Script projects**, and a version
+number belongs to a script — `staging@12` has no meaning against production's script. So this is a
+code move, not a pointer move:
+
+- the target gets **its own** version number, unrelated to the source's
+- the label records where the code came from (`v1.2.0 (ccc3333) (promoted from staging@12)`), because
+  without it that trail is unrecoverable
+- the source's `appsscript.json` is promoted with its code, which is what you want: the manifest is
+  part of what was verified
+
+`@HEAD` is refused as a source — it is not a version, so there is nothing immutable to promote. The
+**target's** `allowLocalDeploy` gates it, checked before anything is pulled: a promotion replaces
+that script's HEAD exactly as a deploy does.
+
+## When someone edits the script in the editor
+
+The Apps Script editor is always there and always writable by anyone with access, so "someone fixed
+it in the UI" is the usual way a project drifts from its repository. Nothing notices on its own:
+`envs` still reports the deployment's version, because the pointer never moved, and the next `push`
+overwrites the edit with no diff and no warning.
+
+```bash
+gas-app diff production
+```
+
+It pulls the remote into a temporary directory and compares it against your build directory — what
+a push *would* upload. Your working tree and your build are untouched. It exits `1` when they
+differ, like `git diff --exit-code`, so a CI job can use it as a check.
+
+Two details that decide whether the answer is believable:
+
+- **Files are matched by name without the extension.** Apps Script stores a name and a type, not a
+  filename: a `Code.gs` you pushed comes back from a pull as `Code.js`. Matching on the full
+  filename would report every file as drifted.
+- **`appsscript.json` is reported separately.** clasp normalises the manifest on push — filling in
+  `timeZone`, `runtimeVersion` and `exceptionLogging` — so a difference there is usually that, not
+  an edit. It never sets the drift verdict on its own.
+
 ## What it actually guards
 
 - **The artefact belongs to the environment.** `build` writes a stamp naming the environment it
@@ -212,7 +305,7 @@ environment, and `rollback`.
 
 ## As a library
 
-The functions the CLI uses are importable directly, so your own scripts do not have to shell out:
+The operations the CLI performs are importable, so your own scripts do not have to shell out:
 
 ```js
 import { collectBuildInfo, loadEnvs, resolveEnv } from 'gas-app-kit'
@@ -225,6 +318,18 @@ const info = collectBuildInfo({ env: process.env.BUILD_ENV ?? 'dev' })
 const env = resolveEnv(loadEnvs(), 'production')
 console.log(env.scriptId)
 ```
+
+What the main entry point holds: the registry (`loadEnvs`, `saveEnvs`, `resolveEnv`, `envState`,
+`EnvsError`), provisioning (`addEnv`), the operations (`push`, `deploy`, `listVersions`, `rollback`,
+`runBuild`, `resolveBuildCommand`), build identity (`collectBuildInfo`, `resolveVersion`,
+`formatDescription`), preflight (`runDoctor`, `runGate`), `claspJson` and `listDeployments` for the
+one-off this tool does not wrap, the URL helpers, and `buildWebApp`.
+
+Everything else this package contains is under **`gas-app-kit/internal`** — the stamp and generated
+clasp config, the manifest guard, `buildWebApp`'s own string handling, the CLI's output helpers.
+It is reachable, and it carries no compatibility promise: it can change in any release. Needing
+something from there is worth an issue, because it probably means the public surface is missing
+something.
 
 ESM only. Types are published alongside.
 
@@ -258,9 +363,9 @@ script that writes into `build/` works just as well.
 
 ## Status
 
-The registry, clasp safety layer, build wrapper, quality gate, push/deploy and rollback are built
-and tested. Still to come: a reusable CI deploy workflow, a runtime endpoint for the deployed build
-identity, and build observability.
+The registry, clasp safety layer, build wrapper, quality gate, push/deploy, rollback, `promote`,
+`doctor`, `--dry-run` and `diff` are built and tested. Still to come: a reusable CI deploy workflow, a runtime endpoint
+for the deployed build identity, and build observability.
 
 ## License
 
