@@ -112,6 +112,7 @@ gas-app diff <env>             # did someone edit this script in the Apps Script
 gas-app build <env>            # run your build with BUILD_ENV set, then stamp the output
 gas-app push <env>             # gate → build → verify the stamp → clasp push
 gas-app deploy <env>           # push, then create a version and move the deployment pointer
+gas-app promote <a> <b>        # ship the exact code <a> verified, without rebuilding
 gas-app versions <env>         # what this environment can be rolled back to
 gas-app rollback <env> <n>     # repoint at version n — without building anything
 ```
@@ -135,7 +136,7 @@ rather than something silently ignored:
 | `--script-id`, `--title`, `--type`, `--force` | `envs add` |
 | `--skip-checks`, `--no-build`, `--dry-run` | `push`, `deploy` |
 | `--description <text>` | `deploy` — the deployment label, otherwise derived |
-| `--yes` | `deploy`, `rollback` |
+| `--yes` | `deploy`, `promote`, `rollback` |
 | `--json` | `doctor`, `diff`, `envs`, `versions` — print the result for a machine instead of for reading |
 
 `gas-app <command> --help` prints one command on its own: its usage, the flags it takes, and the
@@ -218,6 +219,37 @@ ASIDE sets up TypeScript, lint, tests and bundling, and gives you two environmen
 What you gain is the part ASIDE leaves out: more than two environments, a policy flag that keeps
 production writes off laptops, a refusal when the artefact in `build/` was made for a different
 environment, and `rollback`.
+
+## Promoting what staging verified
+
+`deploy production` rebuilds from your working tree, so the bytes staging approved and the bytes
+production receives are never the same artefact — only, at best, the same commit. A rebuild
+re-resolves dependencies, re-runs whatever your build does with timestamps and `BUILD_ENV`, and
+picks up anything that changed in the tree meanwhile. It also runs the build at the moment it is
+least wanted: after the code is already known good.
+
+```bash
+gas-app promote staging production        # the version staging currently serves
+gas-app promote staging production 11     # or a specific one
+```
+
+It fetches the source of that immutable version, pushes it to the target and cuts a version there.
+**Nothing is rebuilt** — like `rollback`, it imports none of the build path, because needing a
+buildable tree to ship known-good code defeats the point.
+
+Be clear about what it is. Environments here are **separate Apps Script projects**, and a version
+number belongs to a script — `staging@12` has no meaning against production's script. So this is a
+code move, not a pointer move:
+
+- the target gets **its own** version number, unrelated to the source's
+- the label records where the code came from (`v1.2.0 (ccc3333) (promoted from staging@12)`), because
+  without it that trail is unrecoverable
+- the source's `appsscript.json` is promoted with its code, which is what you want: the manifest is
+  part of what was verified
+
+`@HEAD` is refused as a source — it is not a version, so there is nothing immutable to promote. The
+**target's** `allowLocalDeploy` gates it, checked before anything is pulled: a promotion replaces
+that script's HEAD exactly as a deploy does.
 
 ## When someone edits the script in the editor
 
@@ -331,8 +363,8 @@ script that writes into `build/` works just as well.
 
 ## Status
 
-The registry, clasp safety layer, build wrapper, quality gate, push/deploy, rollback, `doctor`,
-`--dry-run` and `diff` are built and tested. Still to come: a reusable CI deploy workflow, a runtime endpoint
+The registry, clasp safety layer, build wrapper, quality gate, push/deploy, rollback, `promote`,
+`doctor`, `--dry-run` and `diff` are built and tested. Still to come: a reusable CI deploy workflow, a runtime endpoint
 for the deployed build identity, and build observability.
 
 ## License

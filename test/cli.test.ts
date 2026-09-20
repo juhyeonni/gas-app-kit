@@ -284,12 +284,24 @@ test('--dry-run is accepted by push and deploy, and by nothing else', () => {
   assert.equal(run(['build', 'dev', '--dry-run']).status, 2)
 })
 
-test('a flag’s description names every command that takes it', () => {
-  // It said "envs, versions" while doctor and diff had been given it too — the
-  // sort of drift a shared description map exists to prevent.
-  const help = run(['--help']).stdout
-  const line = help.split('\n').find((l) => l.includes('--json'))
-  for (const command of ['doctor', 'diff', 'envs', 'versions']) {
-    assert.match(line, new RegExp(command), `--json is accepted by ${command} and must say so`)
+test('every flag’s description names every command that takes it', () => {
+  // --json said "envs, versions" after doctor and diff were given it; --yes
+  // said "deploy, rollback" after promote was. A shared description map only
+  // prevents that if something checks the descriptions against the commands.
+  const COMMANDS = ['doctor', 'envs', 'open', 'diff', 'build', 'push', 'deploy', 'promote', 'versions', 'rollback']
+  const GLOBAL = ['--envs <path>', '-h, --help', '-v, --version']
+
+  for (const command of COMMANDS) {
+    const { stdout } = run([command, '--help'])
+    const options = stdout.slice(stdout.indexOf('Options:')).split('\n').slice(1)
+    for (const line of options) {
+      const flag = line.trim().split(/\s\s+/)[0]
+      if (!flag?.startsWith('-') || GLOBAL.includes(flag)) continue
+      assert.match(
+        line,
+        new RegExp(`\\b${command}\\b`),
+        `${command} accepts ${flag}, so ${flag}'s description must name it — got: ${line.trim()}`
+      )
+    }
   }
 })

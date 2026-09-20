@@ -31,6 +31,19 @@ the conventions every other CLI follows.
   version is omitted, what `envs add` creates in your Drive. It printed the global page before,
   which is eleven options of which `versions` accepts two. The help renders from the same list the
   stray-flag check reads, so a flag cannot be accepted by a command whose help omits it. ([#41])
+- **`gas-app promote <from> <to> [version]`** — ship the exact code another environment verified,
+  without rebuilding. `deploy production` rebuilds from the working tree, so the bytes staging
+  approved and the bytes production received were never the same artefact, only at best the same
+  commit — which sat badly with the project's headline guarantee that an artefact belongs to its
+  environment. The stamp proved an artefact was built *for* production; nothing proved it was the
+  one staging approved.
+
+  Environments here are separate Apps Script projects and a version number belongs to a script, so
+  this is a code move rather than a pointer move: it fetches the immutable version's source, pushes
+  it to the target and cuts a version there. The target gets its own, unrelated version number, and
+  the label records the origin. Like `rollback`, it imports none of the build path. `@HEAD` is
+  refused as a source, and the target's `allowLocalDeploy` gates it — a promotion replaces that
+  script's HEAD exactly as a deploy does. ([#44])
 - **`gas-app diff <env>`** — compare an environment against your build and find out whether someone
   edited the script in the Apps Script editor. Nothing noticed before: the deployment pointer does
   not move when someone edits HEAD, so `envs` still reported a version while the next `push` would
@@ -269,3 +282,4 @@ First published release.
 [#53]: https://github.com/juhyeonni/gas-app-kit/issues/53
 [#54]: https://github.com/juhyeonni/gas-app-kit/issues/54
 [#52]: https://github.com/juhyeonni/gas-app-kit/issues/52
+[#44]: https://github.com/juhyeonni/gas-app-kit/issues/44

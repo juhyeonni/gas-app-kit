@@ -20,6 +20,7 @@ import { addEnv } from './envs-add.ts'
 import { runBuild } from './build.ts'
 import { push, deploy } from './deploy.ts'
 import { listVersions, formatVersions, rollback } from './rollback.ts'
+import { promote } from './promote.ts'
 import { editorUrl } from './links.ts'
 import { createUI } from './ui.mjs'
 
@@ -135,6 +136,20 @@ const COMMANDS: Record<string, CommandSpec> = {
       'normalises the manifest on push and that difference is usually not an edit.',
     ],
   },
+  promote: {
+    summary: 'ship the exact code another environment verified, without rebuilding',
+    usage: 'promote <from> <to> [version]',
+    flags: ['yes'],
+    notes: [
+      'Moves code, not a pointer: environments are separate Apps Script projects and a version',
+      'number belongs to a script, so "staging@12" has no meaning against production\'s script.',
+      'It fetches that immutable version\'s source, pushes it to the target and cuts a version',
+      'there — so the target gets its own, unrelated version number, and nothing is rebuilt.',
+      'Without a version it promotes the one the source currently serves; @HEAD is refused,',
+      'because there is nothing immutable to promote.',
+      'Gated by the target\'s allowLocalDeploy: a promotion replaces that script\'s HEAD.',
+    ],
+  },
   versions: {
     summary: 'list the versions an environment can be rolled back to',
     usage: 'versions <env>',
@@ -181,7 +196,7 @@ const FLAGS: Record<string, string> = {
   'no-build': 'push, deploy: push what is already built and stamped',
   'dry-run': 'push, deploy: run the gate, build and checks, then stop before uploading',
   description: 'deploy: label for the deployment (default: derived from version + sha)',
-  yes: 'deploy, rollback: skip the confirmation prompt',
+  yes: 'deploy, promote, rollback: skip the confirmation prompt',
   json: 'doctor, diff, envs, versions: print the result as JSON instead of for reading',
   help: 'show this message',
   version: 'print the gas-app-kit version',
@@ -439,6 +454,22 @@ function main(argv: string[]): number {
     // A declined confirmation changed nothing, so it exits 0 like a success —
     // `exit 1` here would read as a CI failure when nothing went wrong.
     void result.declined
+    return EXIT_OK
+  }
+
+  if (command === 'promote') {
+    const raw = positionals[3]
+    if (raw !== undefined && !/^\d+$/.test(raw)) {
+      process.stderr.write(
+        `Version must be a number, got "${raw}". Run "gas-app versions ${envName ?? '<from>'}" to see what can be promoted.\n`
+      )
+      return EXIT_USAGE
+    }
+    promote(envName, positionals[2], {
+      ...context,
+      version: raw === undefined ? undefined : Number(raw),
+      yes: values.yes,
+    })
     return EXIT_OK
   }
 

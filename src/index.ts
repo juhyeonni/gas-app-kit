@@ -57,6 +57,7 @@ export {
   type RollbackOptions,
   type RollbackResult,
 } from './rollback.ts'
+export { promote, type PromoteOptions, type PromoteResult } from './promote.ts'
 export { resolveBuildCommand, runBuild, type BuildTarget, type RunBuildResult } from './build.ts'
 
 /**
