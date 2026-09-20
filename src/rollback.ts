@@ -155,6 +155,11 @@ export interface RollbackResult {
   target: VersionRow
   /** True when the env already served the target — a stated no-op, not a failure. */
   noop: boolean
+  /**
+   * True when clasp's own reply carried the version number, so the success line
+   * is backed by the write rather than by what it was asked to do.
+   */
+  confirmed?: boolean
   declined?: boolean
 }
 
@@ -261,14 +266,28 @@ export function rollback(
     )
   }
 
+  // Report what the write replied, not what it was asked for. `create-deployment
+  // --json` echoes the row it created, and deploy already trusts that row's
+  // versionNumber — so a success line claiming a version nobody confirmed was
+  // the one piece of this path taken on faith.
+  const confirmed = result.data?.versionNumber
+  if (typeof confirmed === 'number' && confirmed !== target.versionNumber) {
+    // Never silently. The pointer moved somewhere other than where it was
+    // aimed, and saying "now serves N" here would be untrue.
+    throw new EnvsError(
+      `Rollback aimed "${entry.name}" at version ${target.versionNumber}, but clasp reports the deployment now serves version ${confirmed}. ` +
+        `Check "gas-app versions ${entry.name}" before doing anything else.`
+    )
+  }
+
   ui.item(`"${entry.name}" now serves version ${target.versionNumber} (${target.description})`)
-  // Google reports the moved pointer on a lag: for a short window after this
-  // write, list-deployments still returns the previous versionNumber, so the
+  // The write is settled; the *read* is what lags. For a short window after
+  // this, list-deployments still returns the previous versionNumber, so the
   // next `gas-app envs` contradicts the line above. Under incident pressure
   // that reads as "the rollback did not work" and invites a second one — which
   // does not take the already-there branch either, and writes again. Say so,
   // rather than leaving the user to infer a failure that did not happen.
   ui.info('applied — Google can take a moment to report it, so "gas-app envs" may briefly still show the previous version')
   ui.info(webAppUrl(entry.deploymentId))
-  return { entry, target, noop: false }
+  return { entry, target, confirmed: typeof confirmed === 'number', noop: false }
 }

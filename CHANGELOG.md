@@ -62,6 +62,12 @@ the conventions every other CLI follows.
 - **Piping into a reader that stops early no longer ends in a stack trace.** `gas-app --help |
   head -3` failed with an unhandled EPIPE, reproducibly, for a command that did its job. A closed
   reader is not a refusal and no longer exits like one. ([#57])
+- **`rollback` reports what the write replied, not what it asked for.** `create-deployment --json`
+  echoes the row it created — `deploy` already trusts that row's `versionNumber`, while `rollback`
+  printed "now serves version N" from the argument alone. A reply naming a different version now
+  refuses and says which one, rather than making a false claim during an incident; a reply carrying
+  no version still succeeds, because refusing there would report a rollback that worked as a
+  failure. ([#56])
 - **`rollback` says its result may take a moment to be visible.** Google reports the moved pointer
   on a lag, so the next `gas-app envs` could still show the previous version — which under incident
   pressure reads as "the rollback did not work" and invites a second one, which did not take the
