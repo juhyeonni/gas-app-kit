@@ -140,3 +140,29 @@ test('an unknown envs subcommand is a usage error, not a silent listing', () => 
   assert.equal(status, 2)
   assert.match(out, /Unknown subcommand "envs addd"/)
 })
+
+test('--version next to a command is a usage error, not a silent no-op', () => {
+  const { status, out } = run(['deploy', 'dev', '--version', '1.2.3'])
+  assert.equal(status, 2)
+  assert.match(out, /--description/)
+})
+
+test('a bare --help goes to stdout and exits 0', () => {
+  const { status, stdout, stderr } = run(['--help'])
+  assert.equal(status, 0)
+  assert.match(stdout, /Usage: gas-app/)
+  assert.equal(stderr, '')
+})
+
+test('--help lists every flag that actually acts', () => {
+  const { stdout } = run(['--help'])
+  for (const flag of ['--skip-checks', '--no-build', '--description', '--yes']) {
+    assert.ok(stdout.includes(flag), `--help must list ${flag}`)
+  }
+})
+
+test('a real flag aimed at a command that ignores it is a usage error', () => {
+  const { status, out } = run(['push', 'dev', '--yes'])
+  assert.equal(status, 2)
+  assert.match(out, /does not take --yes/)
+})
