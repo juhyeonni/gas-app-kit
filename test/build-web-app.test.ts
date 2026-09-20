@@ -5,6 +5,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 
 import { buildWebApp, stripGasSyntax, escapeJsForGas, escapeCssForGas, renderIndexHtml } from '../src/build-web-app.ts'
+import { EnvsError } from '../src/envs.ts'
 
 test('stripGasSyntax removes an export {...} block', () => {
   const code = 'const a = 1;\nexport { a, b };\n'
@@ -126,4 +127,20 @@ test('buildWebApp produces the full bundle from a real vite + esbuild build', as
 
 after(() => {
   for (const dir of tempDirs) fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('a missing appsscript.json is explained, not an ENOENT out of copyFileSync', async () => {
+  const cwd = fixtureProject()
+  tempDirs.push(cwd)
+  // The manifest is the last of four steps, so three of them succeed first —
+  // and it is a required input, not something buildWebApp() writes for you.
+  fs.rmSync(path.join(cwd, 'appsscript.json'))
+
+  await assert.rejects(
+    () => buildWebApp({ cwd, env: 'test' }),
+    (err: Error) =>
+      err instanceof EnvsError &&
+      err.message.includes('No appsscript.json') &&
+      err.message.includes('runtimeVersion')
+  )
 })
