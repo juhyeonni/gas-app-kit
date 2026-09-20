@@ -3,8 +3,9 @@
 Several environments, a policy gate and one-command rollback for Google Apps Script projects.
 
 > **This is not a starter.** It does not scaffold a project, pick a framework or run a dev server —
-> reach for [`create-gas-app`](https://github.com/vazhioli/create-gas-app) or a template for that,
-> and point this at the result. gas-app-kit owns the part those stop at: dev / staging / production
+> reach for [`@google/aside`](https://github.com/google/aside),
+> [`create-gas-app`](https://github.com/vazhioli/create-gas-app) or a template for that, and point
+> this at the result. gas-app-kit owns the part those stop at: dev / staging / production
 > in one registry instead of a single `.clasp.json`, a refusal when the artefact in `build/` was made
 > for a different environment, a flag that keeps production writes off laptops, and `rollback` —
 > repointing a deployment at an earlier version in one command, without a build and without the Apps
@@ -151,15 +152,35 @@ If today you run `pnpm build && clasp push` against a `.clasp.json` you swap by 
    `gas-app deploy <env>`. Your own build script stays exactly where it is — gas-app runs it.
 3. Add `clasp.*.json` to `.gitignore`.
 
-What the composition could not guarantee, and this does:
+clasp v3 can already do more of this than v2 could: `-P, --project <file>` selects a config per
+invocation, and `clasp redeploy <deploymentId> -V <n>` is a rollback without the Apps Script UI. The
+difference is not what is possible — it is which identifiers you have to keep in your head, and what
+is checked before the upload:
 
-| | `pnpm build && clasp push` | `gas-app push <env>` |
+| | raw clasp v3 | `gas-app` |
 | --- | --- | --- |
+| environment switching | `-P clasp.dev.json`, per command | one registry, by name |
+| rollback | `clasp redeploy AKfy… -V 12` | `rollback dev 12` — no id to remember, candidates listed first |
+| which version an env serves | `list-deployments`, matched by eye | `envs` prints `@12 (v1.2.3)` |
 | which env the artefact was built for | unchecked | stamped at build, verified before upload |
 | wrong-environment push | possible | refused |
 | `appsscript.json` rewritten by clasp | lands in your tree | restored, and you are told |
 | production writable from a laptop | always | `allowLocalDeploy: false` refuses |
-| rollback | Apps Script UI, by hand | `gas-app rollback <env> <n>` |
+
+## Coming from @google/aside
+
+ASIDE sets up TypeScript, lint, tests and bundling, and gives you two environments — `dev` and
+`prod`, as `.clasp-dev.json` and `.clasp-prod.json`. Keep all of it. The two compose: ASIDE's
+`build` is a script in `package.json`, which is exactly what `gas-app build <env>` wraps.
+
+1. Write `envs.json` with one entry per environment — the two you have, and any third you could not
+   add before. `gas-app envs add <name> --script-id <id>` takes the ids out of the two clasp files.
+2. Replace ASIDE's `deploy` script with `gas-app deploy <env>`. Nothing about the build changes.
+3. Add `clasp.*.json` to `.gitignore`, and delete `.clasp-dev.json` / `.clasp-prod.json`.
+
+What you gain is the part ASIDE leaves out: more than two environments, a policy flag that keeps
+production writes off laptops, a refusal when the artefact in `build/` was made for a different
+environment, and `rollback`.
 
 ## What it actually guards
 

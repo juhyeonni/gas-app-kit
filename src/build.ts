@@ -14,7 +14,7 @@ import * as path from 'node:path'
 import { spawnSync } from 'node:child_process'
 
 import { EnvsError } from './envs.ts'
-import { resolveBuildDir, DEFAULT_BUILD_DIR, writeStamp } from './project.ts'
+import { resolveBuildDir, detectPackageManager, DEFAULT_BUILD_DIR, writeStamp } from './project.ts'
 
 export interface ConsumerPackage {
   scripts?: Record<string, string>
@@ -49,18 +49,6 @@ function readPackageJson(cwd: string): ConsumerPackage {
 }
 
 /**
- * Which package manager runs the script. `packageManager` wins, then a
- * lockfile, then npm — the same order every other tool in this space uses.
- */
-function detectPackageManager(cwd: string, pkg: ConsumerPackage): string {
-  const declared = pkg.packageManager?.split('@')[0]
-  if (declared) return declared
-  if (fs.existsSync(path.join(cwd, 'pnpm-lock.yaml'))) return 'pnpm'
-  if (fs.existsSync(path.join(cwd, 'yarn.lock'))) return 'yarn'
-  return 'npm'
-}
-
-/**
  * Resolve which script builds this consumer: `gasApp.build`, else the plain
  * `build` script. Every failure here is static — detected before anything is
  * spawned, which is the point of the self-reference check.
@@ -92,7 +80,7 @@ export function resolveBuildCommand(cwd: string = process.cwd()): BuildTarget {
     script,
     body,
     buildDir: resolveBuildDir(cwd),
-    packageManager: detectPackageManager(cwd, pkg),
+    packageManager: detectPackageManager(cwd),
     source,
   }
 }

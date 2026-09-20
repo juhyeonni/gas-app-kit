@@ -3,6 +3,45 @@
 Notable changes to `gas-app-kit`. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Findings from a competitive-landscape and CLI UX review: the tool measured against
+`@google/aside`, `ascol` and a raw clasp v3 pipeline, and its own CLI read against
+the conventions every other CLI follows.
+
+### Fixed
+
+- **`envs.json` keys this tool does not recognise are no longer deleted.** The registry was
+  rewritten from four known fields, so an `owner`, a note or a field written by a newer version
+  vanished on the next `envs add` or on any `deploy` that recorded a new deployment id. The
+  registry is a file the README tells you to hand-edit; what you add to it now survives. This
+  also removes a second, byte-identical serializer in `envs-add.ts` — one copy is why both of
+  them dropped keys. ([#37])
+- **The gate runs the project's package manager instead of `npm`.** The build path detected
+  pnpm/yarn/npm and the gate ignored it, so a pnpm project typechecked against a `node_modules`
+  layout npm did not create and an environmental failure was reported as a code failure — which
+  is what makes `--skip-checks` permanent. `detectPackageManager` now lives in `project.ts` and
+  both paths use it. ([#38])
+- **An expired clasp session says what to run.** Google's raw OAuth object reached the user —
+  `{"error":"invalid_grant","error_description":"reauth related error (invalid_rapt)",…}` — naming
+  neither clasp nor `clasp login`. Classified once in the clasp wrapper, so every command gets the
+  same sentence, and `envs` now reports that cause instead of a fixed "could not read deployments"
+  line. ([#39])
+- **`envs.json` is searched from the working directory upward.** Every command failed one
+  directory below the project root, which made the tool unusable from inside a monorepo package.
+  Load and save resolve the same file, so a run from a subdirectory no longer reads the registry
+  above and writes a second one beside itself. ([#40])
+
+### Documentation
+
+- **The clasp comparison no longer claims rollback needs the Apps Script UI.** clasp v3 has
+  `redeploy <deploymentId> -V <n>`, and `-P, --project` for per-environment config. The table now
+  compares on what actually differs — identifiers you must remember, and what is verified before
+  the upload. ([#36])
+- **`@google/aside` is named, with a migration path.** It is the multi-environment tool most
+  people meet first and the README did not mention it. The two compose: ASIDE's build script is
+  what `gas-app build <env>` wraps. ([#42])
+
 ## [0.3.0] — 2026-09-20
 
 Closes the 19 findings of a red-team review that read the CLI as someone who had
@@ -142,3 +181,9 @@ First published release.
 [#23]: https://github.com/juhyeonni/gas-app-kit/issues/23
 [#24]: https://github.com/juhyeonni/gas-app-kit/issues/24
 [#25]: https://github.com/juhyeonni/gas-app-kit/issues/25
+[#36]: https://github.com/juhyeonni/gas-app-kit/issues/36
+[#37]: https://github.com/juhyeonni/gas-app-kit/issues/37
+[#38]: https://github.com/juhyeonni/gas-app-kit/issues/38
+[#39]: https://github.com/juhyeonni/gas-app-kit/issues/39
+[#40]: https://github.com/juhyeonni/gas-app-kit/issues/40
+[#42]: https://github.com/juhyeonni/gas-app-kit/issues/42

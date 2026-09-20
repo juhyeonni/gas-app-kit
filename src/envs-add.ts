@@ -13,7 +13,15 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { spawnSync } from 'node:child_process'
 
-import { loadEnvs, EnvsError, ENVS_FILE, ENVS_ENV_VAR, type EnvEntry, type EnvRegistry } from './envs.ts'
+import {
+  loadEnvs,
+  saveEnvs,
+  registryPath,
+  EnvsError,
+  ENVS_ENV_VAR,
+  type EnvEntry,
+  type EnvRegistry,
+} from './envs.ts'
 import { DEFAULT_BUILD_DIR } from './project.ts'
 
 export interface AddEnvOptions {
@@ -133,19 +141,6 @@ function createInIsolation(title: string, buildDir: string, type?: string): stri
 }
 
 /** Serialize the registry back out, dropping the derived `name` field. */
-function serialize(registry: EnvRegistry): string {
-  const out: Record<string, Omit<EnvEntry, 'name'>> = {}
-  for (const [name, entry] of Object.entries(registry)) {
-    out[name] = {
-      scriptId: entry.scriptId,
-      deploymentId: entry.deploymentId,
-      allowPrerelease: entry.allowPrerelease,
-      allowLocalDeploy: entry.allowLocalDeploy,
-    }
-  }
-  return `${JSON.stringify(out, null, 2)}\n`
-}
-
 /**
  * Add or register an environment.
  *
@@ -164,7 +159,9 @@ export function addEnv(name: string, options: AddEnvOptions = {}): AddEnvResult 
     )
   }
 
-  const file = envsPath ? path.resolve(cwd, envsPath) : path.join(cwd, ENVS_FILE)
+  // The same resolution loadEnvs uses, or a subdirectory run reads the registry
+  // above and writes a second one beside itself.
+  const file = registryPath(cwd, envsPath)
   let registry: EnvRegistry = {}
   if (fs.existsSync(file)) {
     registry = loadEnvs({ envsPath, cwd, env })
@@ -193,6 +190,7 @@ export function addEnv(name: string, options: AddEnvOptions = {}): AddEnvResult 
   const deploymentCleared = Boolean(registry[name]?.deploymentId) && !sameScript
 
   const entry: EnvEntry = {
+    ...registry[name],
     name,
     scriptId: resolvedScriptId,
     deploymentId: sameScript ? (registry[name]?.deploymentId ?? '') : '',
@@ -202,7 +200,7 @@ export function addEnv(name: string, options: AddEnvOptions = {}): AddEnvResult 
 
   // Existing keys keep their position; a new env is appended.
   registry[name] = entry
-  fs.writeFileSync(file, serialize(registry))
+  saveEnvs(registry, { envsPath, cwd, env })
 
   return { entry, created, deploymentCleared }
 }

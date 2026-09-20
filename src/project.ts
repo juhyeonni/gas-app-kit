@@ -65,6 +65,34 @@ export function resolveBuildDir(cwd: string = process.cwd()): string {
   }
 }
 
+/**
+ * Which package manager runs the consumer's scripts: `packageManager` wins,
+ * then a lockfile, then npm — the same order every other tool in this space
+ * uses.
+ *
+ * Here rather than in build.ts because the gate runs scripts too and must not
+ * import the build path to learn how. It ran `npm` unconditionally, so a pnpm
+ * project typechecked against a node_modules layout npm did not create and the
+ * gate reported an environmental failure as a code failure. A package.json that
+ * cannot be read falls back to the lockfile probe: this answers "which runner",
+ * never "can this project build".
+ */
+export function detectPackageManager(cwd: string = process.cwd()): string {
+  const dir = resolveCwd(cwd)
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8')) as {
+      packageManager?: string
+    }
+    const declared = pkg.packageManager?.split('@')[0]
+    if (declared) return declared
+  } catch {
+    // No package.json, or unreadable. The lockfiles still answer.
+  }
+  if (fs.existsSync(path.join(dir, 'pnpm-lock.yaml'))) return 'pnpm'
+  if (fs.existsSync(path.join(dir, 'yarn.lock'))) return 'yarn'
+  return 'npm'
+}
+
 export function assertProvisioned(entry: EnvEntry): void {
   if (entry.scriptId) return
   throw new EnvsError(
