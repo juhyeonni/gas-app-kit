@@ -41,15 +41,23 @@ export function claspConfigPath(envName: string, cwd?: string): string {
  * clasp as `-P`. Regenerated on every invocation: a stale file on disk can
  * never win, because the caller names the file explicitly.
  */
+/**
+ * An env with no scriptId cannot be written to at all. Exported so the callers
+ * can reach this verdict before a gate and a full build have already run — the
+ * message is the same one either way.
+ */
+export function assertProvisioned(entry: EnvEntry): void {
+  if (entry.scriptId) return
+  throw new EnvsError(
+    `Environment "${entry.name}" has no scriptId — it is unprovisioned. Run "gas-app envs add ${entry.name}" or add a scriptId to envs.json.`
+  )
+}
+
 export function writeClaspConfig(
   entry: EnvEntry,
   { cwd, buildDir = DEFAULT_BUILD_DIR }: ProjectPaths = {}
 ): string {
-  if (!entry.scriptId) {
-    throw new EnvsError(
-      `Environment "${entry.name}" has no scriptId — it is unprovisioned. Run "gas-app envs add ${entry.name}" or add a scriptId to envs.json.`
-    )
-  }
+  assertProvisioned(entry)
   const file = claspConfigPath(entry.name, cwd)
   fs.writeFileSync(file, `${JSON.stringify({ scriptId: entry.scriptId, rootDir: buildDir }, null, 2)}\n`)
   return file
