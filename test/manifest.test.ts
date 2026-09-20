@@ -38,20 +38,27 @@ test('an untouched manifest is not rewritten — mtime is preserved', () => {
   assert.equal(fs.statSync(artefactOf(cwd)).mtimeMs, stale)
 })
 
-test('a manifest clasp altered is restored and the run is refused', () => {
+test('a manifest clasp altered is restored, and the run continues', () => {
   const cwd = workspace()
-  assert.throws(
-    () =>
-      withManifest(
-        () => {
-          fs.writeFileSync(artefactOf(cwd), JSON.stringify({ timeZone: 'Asia/Tokyo' }))
-          return 'ok'
-        },
-        { cwd }
-      ),
-    (err: Error) => err instanceof ManifestDriftError && err.message.includes('already reached Apps Script')
+  const altered = JSON.stringify({ timeZone: 'Asia/Tokyo' })
+
+  // Not a refusal: clasp normalises the manifest routinely, and by the time the
+  // rewrite is visible the call has already returned.
+  const result = withManifest(
+    () => {
+      fs.writeFileSync(artefactOf(cwd), altered)
+      return 'ok'
+    },
+    { cwd }
   )
+
+  assert.equal(result, 'ok', 'the caller still gets its result')
   assert.equal(fs.readFileSync(artefactOf(cwd), 'utf-8'), MANIFEST, 'restored byte-identical')
+  assert.equal(
+    fs.readFileSync(`${artefactOf(cwd)}.clasp`, 'utf-8'),
+    altered,
+    "clasp's version is kept so the suggested cp works"
+  )
 })
 
 test('restoration happens on the failure path too, and the original error wins', () => {
@@ -73,15 +80,16 @@ test('restoration happens on the failure path too, and the original error wins',
 
 test('a deleted artefact is restored as well', () => {
   const cwd = workspace()
-  assert.throws(() =>
-    withManifest(
-      () => {
-        fs.rmSync(artefactOf(cwd))
-      },
-      { cwd }
-    )
+  withManifest(
+    () => {
+      fs.rmSync(artefactOf(cwd))
+    },
+    { cwd }
   )
   assert.equal(fs.readFileSync(artefactOf(cwd), 'utf-8'), MANIFEST)
+  // Nothing to adopt when the artefact was removed rather than rewritten, so
+  // the message must not point at a file that does not exist.
+  assert.equal(fs.existsSync(`${artefactOf(cwd)}.clasp`), false)
 })
 
 test('no manifest in buildDir makes the guard a transparent wrapper', () => {
