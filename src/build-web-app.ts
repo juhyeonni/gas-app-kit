@@ -165,7 +165,19 @@ function generateHtml(dist: string, buildDir: string): void {
 }
 
 function copyAppsScript(root: string, buildDir: string): void {
-  fs.copyFileSync(path.join(root, 'appsscript.json'), path.join(buildDir, 'appsscript.json'))
+  const source = path.join(root, 'appsscript.json')
+  // The only step here with no existence check: three of four succeeded and
+  // then this threw a raw ENOENT from inside copyFileSync.
+  if (!fs.existsSync(source)) {
+    throw new EnvsError(
+      'No appsscript.json at the project root. It is the Apps Script manifest — runtime, timezone and ' +
+        'OAuth scopes — and every project needs one. buildWebApp() reads it, it does not write it.\n' +
+        'A minimal one to start from:\n' +
+        `  echo '{"timeZone":"Asia/Tokyo","runtimeVersion":"V8","exceptionLogging":"STACKDRIVER"}' > appsscript.json\n` +
+        'Add "oauthScopes" to it when your server code needs a Google service.'
+    )
+  }
+  fs.copyFileSync(source, path.join(buildDir, 'appsscript.json'))
 }
 
 /**
