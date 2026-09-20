@@ -184,3 +184,69 @@ test('a filesystem failure is a refusal, not a raw Node stack trace', () => {
   assert.match(out, /ENOENT/)
   assert.doesNotMatch(out, /at Module\./, 'the stack trace must not reach the user')
 })
+
+test('--help on a command shows that command, not the global page', () => {
+  const { status, stdout } = run(['push', '--help'])
+  assert.equal(status, 0)
+  assert.match(stdout, /Usage: gas-app push <env>/)
+  assert.match(stdout, /--skip-checks/)
+  assert.match(stdout, /--no-build/)
+  assert.doesNotMatch(stdout, /--script-id/, 'a flag push does not take must not be listed')
+  assert.doesNotMatch(stdout, /^Commands:/m, 'the command list belongs to the global page')
+})
+
+test('envs add has its own help, separate from the envs listing', () => {
+  const { status, stdout } = run(['envs', 'add', '--help'])
+  assert.equal(status, 0)
+  assert.match(stdout, /Usage: gas-app envs add <name>/)
+  for (const flag of ['--script-id', '--title', '--type', '--force']) {
+    assert.match(stdout, new RegExp(flag.replace(/-/g, '\\-')))
+  }
+})
+
+test('bare --help still lists every command', () => {
+  const { status, stdout } = run(['--help'])
+  assert.equal(status, 0)
+  assert.match(stdout, /Commands:/)
+  assert.match(stdout, /rollback/)
+})
+
+test('a command’s help and its accepted flags are the same list', () => {
+  // The help is rendered from the list the stray-flag check reads, so these
+  // cannot drift: --json is in versions' help and accepted, --yes is neither.
+  assert.match(run(['versions', '--help']).stdout, /--json/)
+  assert.equal(run(['versions', 'dev', '--yes']).status, 2)
+})
+
+test('envs --json prints one parseable object and nothing else', () => {
+  const { status, stdout } = run(['envs', '--json'])
+  assert.equal(status, 0)
+  const parsed = JSON.parse(stdout)
+  assert.deepEqual(Object.keys(parsed), ['dev', 'staging', 'fresh'])
+  assert.equal(parsed.staging.state, 'undeployed')
+  assert.equal(parsed.fresh.state, 'unprovisioned')
+})
+
+test('--json says why a version is unknown rather than leaving it blank', () => {
+  const { stdout } = run(['envs', '--json'])
+  const dev = JSON.parse(stdout).dev
+  assert.equal(dev.state, 'deployed')
+  assert.equal(dev.versionNumber, null, 'null, not omitted — "could not ask" is not "no version"')
+  assert.match(dev.degraded, /clasp not found on PATH/)
+})
+
+test('a refused --json run writes no JSON at all', () => {
+  // Either stdout parses or the command failed; never half an object.
+  const { status, stdout } = run(['versions', 'dev', '--json'])
+  assert.equal(status, 1)
+  assert.equal(stdout.trim(), '')
+})
+
+test('a reader that stops early does not produce a crash', () => {
+  const result = spawnSync('sh', ['-c', `"${process.execPath}" "${BIN}" --help | head -3`], {
+    encoding: 'utf-8',
+    env: { ...process.env, PATH: process.env.PATH ?? '' },
+  })
+  assert.doesNotMatch(result.stderr, /EPIPE/)
+  assert.match(result.stdout, /Usage: gas-app/)
+})

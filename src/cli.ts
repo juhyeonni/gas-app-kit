@@ -25,14 +25,153 @@ const EXIT_OK = 0
 const EXIT_FAIL = 1
 const EXIT_USAGE = 2
 
-const COMMANDS: Record<string, string> = {
-  envs: 'list registered environments and their state',
-  open: 'print editor and web-app URLs for an environment',
-  build: "run the consumer's build for an environment and stamp the output",
-  push: 'gate, build, verify, then push the code to an environment',
-  deploy: 'push, then create or update the environment’s deployment',
-  versions: 'list the versions an environment can be rolled back to',
-  rollback: 'repoint an environment at an earlier version, without rebuilding',
+/**
+ * A CLI's output is routinely read by something that stops early — `| head`,
+ * `| grep -q`, a pager the user quits. The reader closes the pipe, the next
+ * write fails with EPIPE, and Node's default for an 'error' event with no
+ * listener is to throw: `gas-app --help | head -3` printed a stack trace and
+ * exited non-zero, reproducibly, for a command that did nothing wrong.
+ *
+ * A closed reader is not this program's failure, so it is not reported as one.
+ * Anything else on these streams still surfaces the way it did before.
+ */
+for (const stream of [process.stdout, process.stderr]) {
+  stream.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EPIPE') process.exit(EXIT_OK)
+    throw err
+  })
+}
+
+interface CommandSpec {
+  /** One line, shown in the command list. */
+  summary: string
+  /** Everything after `gas-app`, as it should be typed. */
+  usage: string
+  /**
+   * Flags this command accepts, beyond the global ones. This list is the only
+   * source: the stray-flag check and the command's own help both read it, so a
+   * flag cannot be accepted by a command whose help omits it.
+   */
+  flags: readonly string[]
+  /** Behaviour a flag list cannot convey. Shown only under the command's own help. */
+  notes?: readonly string[]
+}
+
+const COMMANDS: Record<string, CommandSpec> = {
+  envs: {
+    summary: 'list registered environments and their state',
+    usage: 'envs',
+    flags: ['json'],
+    notes: [
+      'Reports one of four states per environment: unprovisioned (no scriptId), undeployed (no',
+      'deploymentId), @<n> (serving version n), and "deployed (version unknown)" — the last',
+      'whenever the version cannot be read from Google, which includes being logged out.',
+      'To create or register an environment, see "gas-app envs add --help".',
+    ],
+  },
+  open: {
+    summary: 'print editor and web-app URLs for an environment',
+    usage: 'open [env]',
+    flags: [],
+    notes: [
+      'With no environment, prints every one. An environment that is not deployed yet is a',
+      'state, not a failure: its editor URL is printed and the command exits 0.',
+    ],
+  },
+  build: {
+    summary: "run the consumer's build for an environment and stamp the output",
+    usage: 'build <env>',
+    flags: [],
+    notes: [
+      'Runs your own build script with BUILD_ENV set, then writes a stamp naming the',
+      'environment it built for. push refuses output whose stamp does not match.',
+    ],
+  },
+  push: {
+    summary: 'gate, build, verify, then push the code to an environment',
+    usage: 'push <env>',
+    flags: ['skip-checks', 'no-build'],
+    notes: [
+      'Refused unless the environment has "allowLocalDeploy": true, or CI=true. A push',
+      "replaces the script's HEAD code, which bound triggers and onOpen menus run from",
+      'immediately — rollback cannot undo it, which is why it is gated like deploy.',
+    ],
+  },
+  deploy: {
+    summary: 'push, then create or update the environment’s deployment',
+    usage: 'deploy <env>',
+    flags: ['skip-checks', 'no-build', 'description', 'yes'],
+    notes: [
+      'Confirms first. With no terminal to ask on it refuses rather than assuming consent —',
+      'pass --yes, or set CI=true, to state the intent explicitly.',
+      'Creates a new immutable version and moves the deployment pointer at it.',
+    ],
+  },
+  versions: {
+    summary: 'list the versions an environment can be rolled back to',
+    usage: 'versions <env>',
+    flags: ['json'],
+    notes: ['The version the environment currently serves is marked with an arrow.'],
+  },
+  rollback: {
+    summary: 'repoint an environment at an earlier version, without rebuilding',
+    usage: 'rollback <env> [version]',
+    flags: ['yes'],
+    notes: [
+      'The version is optional: omitting it lists the candidates and refuses, rather than',
+      'choosing one for you. Nothing is built — the tree being unbuildable is frequently why',
+      'you are rolling back. @HEAD is never a target.',
+      'Confirms first; with no terminal it refuses and names the --yes form that would work.',
+    ],
+  },
+}
+
+/** `envs add` is the one nested form, and it carries four flags of its own. */
+const ENVS_ADD: CommandSpec = {
+  summary: 'create a new Apps Script project, or register one that already exists',
+  usage: 'envs add <name>',
+  flags: ['script-id', 'title', 'type', 'force'],
+  notes: [
+    'Without --script-id this creates a real Apps Script project in your Drive.',
+    'A newly registered environment cannot be written to from this machine until you set',
+    '"allowLocalDeploy": true for it in envs.json yourself — the flag fails closed.',
+  ],
+}
+
+/**
+ * One description per flag, shown in the global help and in each command's own.
+ * The "push, deploy:" prefixes are kept under a single command too: they say the
+ * flag is shared, which is worth knowing at either altitude.
+ */
+const FLAGS: Record<string, string> = {
+  envs: 'path to the environment registry (default: ./envs.json, searched upward)',
+  'script-id': 'envs add: register an existing project instead of creating one',
+  title: 'envs add: title for a newly created project (default: the env name)',
+  type: 'envs add: clasp project type (default: standalone)',
+  force: 'envs add: overwrite an existing registry entry',
+  'skip-checks': 'push, deploy: skip the typecheck/test gate',
+  'no-build': 'push, deploy: push what is already built and stamped',
+  description: 'deploy: label for the deployment (default: derived from version + sha)',
+  yes: 'deploy, rollback: skip the confirmation prompt',
+  json: 'envs, versions: print the result as JSON instead of for reading',
+  help: 'show this message',
+  version: 'print the gas-app-kit version',
+}
+
+/** How each flag is spelled in a help listing, `-h, --help` included. */
+const FLAG_SPELLING: Record<string, string> = {
+  envs: '--envs <path>',
+  'script-id': '--script-id <id>',
+  title: '--title <text>',
+  type: '--type <type>',
+  force: '--force',
+  'skip-checks': '--skip-checks',
+  'no-build': '--no-build',
+  description: '--description <t>',
+  yes: '--yes',
+  json: '--json',
+  help: '-h, --help',
+  version: '-v, --version',
 }
 
 /**
@@ -51,30 +190,52 @@ const OPTIONS = {
   'no-build': { type: 'boolean' },
   description: { type: 'string' },
   yes: { type: 'boolean' },
+  json: { type: 'boolean' },
   help: { type: 'boolean', short: 'h' },
   version: { type: 'boolean', short: 'v' },
 } as const
 
+const GLOBAL_FLAGS = ['envs', 'help', 'version'] as const
+
+/** Render one flag as a help line, aligned against its widest sibling. */
+function flagLines(names: readonly string[], stream: { write(text: string): unknown }): void {
+  const width = Math.max(...names.map((n) => FLAG_SPELLING[n]!.length))
+  for (const name of names) {
+    stream.write(`  ${FLAG_SPELLING[name]!.padEnd(width)}  ${FLAGS[name]}\n`)
+  }
+}
+
 function usage(stream: { write(text: string): unknown } = process.stderr): void {
   const width = Math.max(...Object.keys(COMMANDS).map((c) => c.length))
   stream.write('\nUsage: gas-app <command> [env] [options]\n\nCommands:\n')
-  for (const [name, description] of Object.entries(COMMANDS)) {
-    stream.write(`  ${name.padEnd(width)}  ${description}\n`)
+  for (const [name, spec] of Object.entries(COMMANDS)) {
+    stream.write(`  ${name.padEnd(width)}  ${spec.summary}\n`)
   }
   stream.write('\nSubcommands:\n')
-  stream.write('  envs add <name>   create a project, or register one with --script-id\n')
+  stream.write(`  ${ENVS_ADD.usage.padEnd(width + 2)}  ${ENVS_ADD.summary}\n`)
   stream.write('\nOptions:\n')
-  stream.write('  --envs <path>       path to the environment registry (default: ./envs.json)\n')
-  stream.write('  --script-id <id>    envs add: register an existing project instead of creating one\n')
-  stream.write('  --title <text>      envs add: title for a newly created project (default: the env name)\n')
-  stream.write('  --type <type>       envs add: clasp project type (default: standalone)\n')
-  stream.write('  --force             envs add: overwrite an existing registry entry\n')
-  stream.write('  --skip-checks       push, deploy: skip the typecheck/test gate\n')
-  stream.write('  --no-build          push, deploy: push what is already built and stamped\n')
-  stream.write('  --description <t>   deploy: label for the deployment (default: derived from version + sha)\n')
-  stream.write('  --yes               deploy, rollback: skip the confirmation prompt\n')
-  stream.write('  -h, --help          show this message\n')
-  stream.write('  -v, --version       print the gas-app-kit version\n')
+  flagLines(Object.keys(FLAGS), stream)
+  stream.write('\nRun "gas-app <command> --help" for one command on its own.\n')
+  stream.write('\nExit codes: 0 success · 1 failure · 2 usage error\n\n')
+}
+
+/**
+ * One command's own help.
+ *
+ * The global block lists eleven options of which `versions` accepts two, so the
+ * signal-to-noise at the point of use was poor — and `--help` on a subcommand
+ * printing the global page is the one CLI convention nearly everything else
+ * follows. `spec.flags` is the same list the stray-flag check reads, so a flag
+ * this omits is a flag the command refuses.
+ */
+function commandUsage(spec: CommandSpec, stream: { write(text: string): unknown } = process.stdout): void {
+  stream.write(`\nUsage: gas-app ${spec.usage} [options]\n\n  ${spec.summary}\n`)
+  if (spec.notes?.length) {
+    stream.write('\n')
+    for (const note of spec.notes) stream.write(`  ${note}\n`)
+  }
+  stream.write('\nOptions:\n')
+  flagLines([...spec.flags, ...GLOBAL_FLAGS], stream)
   stream.write('\nExit codes: 0 success · 1 failure · 2 usage error\n\n')
 }
 
@@ -127,7 +288,9 @@ function main(argv: string[]): number {
   // An explicit --help is what was asked for: stdout, exit 0, with or without a
   // command. Only the empty invocation is a usage error.
   if (values.help) {
-    usage(process.stdout)
+    if (command === 'envs' && envName === 'add') commandUsage(ENVS_ADD)
+    else if (command !== undefined && Object.hasOwn(COMMANDS, command)) commandUsage(COMMANDS[command]!)
+    else usage(process.stdout)
     return EXIT_OK
   }
   if (!command) {
@@ -146,18 +309,13 @@ function main(argv: string[]): number {
   // `strict: true` rejects a flag nobody declared; it says nothing about a real
   // flag aimed at a command that ignores it. `push --yes` looked like consent
   // and was discarded, which is worse than an error.
-  const GLOBAL_FLAGS = ['envs', 'help', 'version']
-  const TAKES: Record<string, readonly string[]> = {
-    envs: ['script-id', 'title', 'type', 'force'],
-    open: [],
-    build: [],
-    push: ['skip-checks', 'no-build'],
-    deploy: ['skip-checks', 'no-build', 'description', 'yes'],
-    versions: [],
-    rollback: ['yes'],
-  }
+  // `envs` covers its own flags plus `envs add`'s: they share one command word,
+  // and rejecting `--script-id` before the `add` is read would refuse a valid
+  // invocation.
+  const accepted =
+    command === 'envs' ? [...COMMANDS.envs!.flags, ...ENVS_ADD.flags] : COMMANDS[command]!.flags
   const stray = Object.keys(values).filter(
-    (flag) => !GLOBAL_FLAGS.includes(flag) && !TAKES[command]!.includes(flag)
+    (flag) => !GLOBAL_FLAGS.includes(flag as (typeof GLOBAL_FLAGS)[number]) && !accepted.includes(flag)
   )
   if (stray.length) {
     process.stderr.write(
@@ -168,6 +326,7 @@ function main(argv: string[]): number {
   }
 
   const context = { envsPath: values.envs }
+  const json = values.json === true
 
   if (command === 'envs') {
     // `envs add <name>` is the one nested form. Everything else under `envs`
@@ -220,7 +379,7 @@ function main(argv: string[]): number {
       )
       return EXIT_USAGE
     }
-    return envsCommand(context)
+    return envsCommand({ ...context, json })
   }
 
   if (command === 'push') {
@@ -244,6 +403,25 @@ function main(argv: string[]): number {
 
   if (command === 'versions') {
     const result = listVersions(envName, context)
+    if (json) {
+      // `total` before truncation, so a shortened list never reads as complete,
+      // and `current: null` with `currentIsHead` distinguishes "serving HEAD"
+      // from "could not tell".
+      console.log(
+        JSON.stringify(
+          {
+            env: result.entry.name,
+            current: result.current?.versionNumber ?? null,
+            currentIsHead: result.currentIsHead,
+            total: result.total,
+            versions: result.versions,
+          },
+          null,
+          2
+        )
+      )
+      return EXIT_OK
+    }
     for (const line of formatVersions(result)) console.log(line)
     if (result.versions.length === 0) {
       createUI('gas-app versions').info(`"${result.entry.name}" has no versioned deployments yet`)
