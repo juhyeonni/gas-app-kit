@@ -3,7 +3,7 @@
 Notable changes to `gas-app-kit`. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] — 2026-09-20
 
 Findings from a competitive-landscape and CLI UX review: the tool measured against
 `@google/aside`, `ascol` and a raw clasp v3 pipeline, and its own CLI read against
@@ -241,6 +241,7 @@ saying what to do next, or one that said something untrue.
 
 First published release.
 
+[0.4.0]: https://github.com/juhyeonni/gas-app-kit/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/juhyeonni/gas-app-kit/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/juhyeonni/gas-app-kit/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/juhyeonni/gas-app-kit/compare/v0.1.2...v0.1.3
