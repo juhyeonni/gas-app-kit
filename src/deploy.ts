@@ -23,7 +23,7 @@ import { resolveBuildCommand, runBuild } from './build.ts'
 import { runGate, type GateResult } from './gate.ts'
 import { claspJson, type DeploymentRow } from './clasp.ts'
 import { promptYesNo } from './prompt.ts'
-import { webAppUrl } from './links.ts'
+import { editorUrl, webAppUrl } from './links.ts'
 import { createUI } from './ui.mjs'
 
 export interface PushOptions extends LoadEnvsOptions {
@@ -105,6 +105,9 @@ export function push(envName: string | undefined, options: PushOptions = {}): Pu
       ? `"${entry.name}" already up to date — no files changed`
       : `pushed ${files} file${files === 1 ? '' : 's'} to "${entry.name}"`
   )
+  // deploy and rollback both end on a URL; push ended on nothing, and right
+  // after a first push is when the editor link is most wanted.
+  ui.info(editorUrl(entry.scriptId))
   return { entry, files, gate }
 }
 
@@ -150,11 +153,18 @@ export function deploy(envName: string | undefined, options: DeployOptions = {})
   }
   // Derived from the same resolution every other consumer reads, so the label
   // on the deployment and the version stamped in the code cannot disagree.
+  const shortSha = readShortSha(cwd)
   const description =
     options.description ??
-    formatDescription(resolveVersion({ explicit: options.version, cwd, processEnv: env }), readShortSha(cwd))
+    formatDescription(resolveVersion({ explicit: options.version, cwd, processEnv: env }), shortSha)
 
-  if (!yes && !inCI && !confirm(`Deploy "${entry.name}" as ${description}?`)) {
+  // The bare label read as a semver being chosen, and the "(-)" in a derived one
+  // is an absent git sha that nothing explained.
+  const question =
+    `Deploy "${entry.name}" as "${description}" — this creates a new immutable version` +
+    (options.description === undefined && !shortSha ? ', with no git commit recorded' : '') +
+    '?'
+  if (!yes && !inCI && !confirm(question)) {
     // Nothing changed, so this is not a failure. exit 1 here would be a CI false positive.
     ui.info('declined — nothing deployed')
     return {

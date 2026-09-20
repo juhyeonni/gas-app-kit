@@ -25,7 +25,7 @@ import {
   type DeploymentRow,
   type VersionRowRaw,
 } from './clasp.ts'
-import { writeClaspConfig } from './project.ts'
+import { resolveBuildDir, writeClaspConfig } from './project.ts'
 import { promptYesNo } from './prompt.ts'
 import { webAppUrl } from './links.ts'
 import { withManifest } from './manifest.ts'
@@ -161,9 +161,9 @@ export interface RollbackResult {
 /**
  * Repoint `env`'s deployment at `versionNumber`, without building anything.
  *
- * Omitting the target is not an error on a TTY — it lists the candidates and
- * asks. Off a TTY it refuses, because a rollback that silently picks a version
- * for you is worse than one that stops.
+ * Omitting the target lists the candidates and then refuses, on a TTY as much
+ * as off one: a rollback that picks a version for you is worse than one that
+ * stops. The listing is the useful half, so it is printed either way.
  */
 export function rollback(
   envName: string | undefined,
@@ -235,7 +235,10 @@ export function rollback(
   // Guarded even though a version repoint should not touch the manifest:
   // "should not" and "does not" are different, and a clean tree afterwards is
   // one of this bolt's stated criteria.
-  const configPath = writeClaspConfig(entry, { cwd })
+  // Not `{ cwd }` alone: the default buildDir left the manifest guard below
+  // watching a directory this project may not use.
+  const buildDir = resolveBuildDir(cwd)
+  const configPath = writeClaspConfig(entry, { cwd, buildDir })
   const result = withManifest(
     () =>
       claspJson<DeploymentRow>([
@@ -249,7 +252,7 @@ export function rollback(
         '--project',
         configPath,
       ]),
-    { cwd }
+    { cwd, buildDir }
   )
 
   if (!result.ok) {

@@ -14,7 +14,7 @@ import * as path from 'node:path'
 import { spawnSync } from 'node:child_process'
 
 import { EnvsError } from './envs.ts'
-import { DEFAULT_BUILD_DIR, writeStamp } from './project.ts'
+import { resolveBuildDir, DEFAULT_BUILD_DIR, writeStamp } from './project.ts'
 
 export interface ConsumerPackage {
   scripts?: Record<string, string>
@@ -91,7 +91,7 @@ export function resolveBuildCommand(cwd: string = process.cwd()): BuildTarget {
   return {
     script,
     body,
-    buildDir: pkg.gasApp?.buildDir ?? DEFAULT_BUILD_DIR,
+    buildDir: resolveBuildDir(cwd),
     packageManager: detectPackageManager(cwd, pkg),
     source,
   }

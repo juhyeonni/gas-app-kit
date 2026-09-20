@@ -272,3 +272,18 @@ test('rollback without a terminal refuses instead of declining on the user’s b
     process.stdin.isTTY = previous
   }
 })
+
+test('rollback honours gasApp.buildDir rather than assuming the default', () => {
+  // A version repoint does not touch the manifest, but the guard around it was
+  // watching a directory this project does not use, which made it inert.
+  const cwd = workspace()
+  fs.writeFileSync(
+    path.join(cwd, 'package.json'),
+    JSON.stringify({ name: 'c', private: true, gasApp: { buildDir: 'dist' } })
+  )
+
+  withFakeClasp(ROWS, () => rollback('dev', 3, { cwd, env: {}, yes: true }))
+
+  const config = JSON.parse(fs.readFileSync(path.join(cwd, 'clasp.dev.json'), 'utf-8'))
+  assert.equal(config.rootDir, 'dist')
+})

@@ -46,6 +46,25 @@ export function claspConfigPath(envName: string, cwd?: string): string {
  * can reach this verdict before a gate and a full build have already run — the
  * message is the same one either way.
  */
+/**
+ * The configured build directory, `gasApp.buildDir` or the default.
+ *
+ * It lives here rather than in build.ts because rollback needs it too and must
+ * not import the build path to get it — an unbuildable tree is frequently the
+ * reason you are rolling back. A package.json that cannot be read falls back to
+ * the default: this answers "which directory", never "can this project build".
+ */
+export function resolveBuildDir(cwd: string = process.cwd()): string {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(resolveCwd(cwd), 'package.json'), 'utf-8')) as {
+      gasApp?: { buildDir?: string }
+    }
+    return pkg.gasApp?.buildDir ?? DEFAULT_BUILD_DIR
+  } catch {
+    return DEFAULT_BUILD_DIR
+  }
+}
+
 export function assertProvisioned(entry: EnvEntry): void {
   if (entry.scriptId) return
   throw new EnvsError(
