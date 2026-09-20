@@ -254,3 +254,21 @@ test('the rollback module does not import the build path', async () => {
   assert.doesNotMatch(source, /from '\.\/gate\.ts'/)
 })
 
+
+test('rollback without a terminal refuses instead of declining on the user’s behalf', () => {
+  const cwd = workspace()
+  const previous = process.stdin.isTTY
+  process.stdin.isTTY = false
+  try {
+    const log = withFakeClasp(ROWS, (log) => {
+      assert.throws(
+        () => rollback('dev', 3, { cwd, env: {} }),
+        (err: Error) => err.message.includes('gas-app rollback dev 3 --yes')
+      )
+      return log
+    })
+    assert.equal(calls(log).some((c) => c.startsWith('create-deployment')), false)
+  } finally {
+    process.stdin.isTTY = previous
+  }
+})

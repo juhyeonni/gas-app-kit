@@ -234,3 +234,27 @@ test('--yes bypasses the confirmation entirely', () => {
   assert.equal(asked, false, 'the prompt must not even be reached')
   assert.equal(result.declined, undefined)
 })
+
+test('push is gated by allowLocalDeploy too — a push rewrites HEAD', () => {
+  const { cwd, log } = workspace({ production: { scriptId: 'S_PRD', allowLocalDeploy: false } })
+  assert.throws(
+    () => withFakeClasp(cwd, () => push('production', { cwd, env: {}, noBuild: true })),
+    (err: Error) => err instanceof EnvsError && err.message.includes('allowLocalDeploy')
+  )
+  assert.deepEqual(calls(log), [], 'clasp was never called')
+})
+
+test('deploy without a terminal refuses instead of confirming on the user’s behalf', () => {
+  const { cwd, log } = workspace(DEV_ONLY)
+  const previous = process.stdin.isTTY
+  process.stdin.isTTY = false
+  try {
+    assert.throws(
+      () => withFakeClasp(cwd, () => deploy('dev', { cwd, env: {} })),
+      (err: Error) => err instanceof EnvsError && err.message.includes('gas-app deploy dev --yes')
+    )
+  } finally {
+    process.stdin.isTTY = previous
+  }
+  assert.deepEqual(calls(log), [], 'nothing was pushed and nothing was deployed')
+})

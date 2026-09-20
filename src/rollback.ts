@@ -17,8 +17,6 @@
  * is pointing production at whatever is in the editor right now.
  */
 
-import * as fs from 'node:fs'
-
 import { loadEnvs, resolveEnv, EnvsError, type EnvEntry, type LoadEnvsOptions } from './envs.ts'
 import {
   claspJson,
@@ -28,6 +26,7 @@ import {
   type VersionRowRaw,
 } from './clasp.ts'
 import { writeClaspConfig } from './project.ts'
+import { promptYesNo } from './prompt.ts'
 import { webAppUrl } from './links.ts'
 import { withManifest } from './manifest.ts'
 import { createUI } from './ui.mjs'
@@ -159,19 +158,6 @@ export interface RollbackResult {
   declined?: boolean
 }
 
-function promptYesNo(question: string): boolean {
-  if (!process.stdin.isTTY) return false
-  process.stdout.write(`${question} [y/N] `)
-  const buffer = Buffer.alloc(8)
-  let bytes: number
-  try {
-    bytes = fs.readSync(0, buffer, 0, buffer.length, null)
-  } catch {
-    return false
-  }
-  return /^y/i.test(buffer.toString('utf-8', 0, bytes).trim())
-}
-
 /**
  * Repoint `env`'s deployment at `versionNumber`, without building anything.
  *
@@ -184,7 +170,7 @@ export function rollback(
   versionNumber: number | undefined,
   options: RollbackOptions = {}
 ): RollbackResult {
-  const { cwd = process.cwd(), yes = false, confirm = promptYesNo } = options
+  const { cwd = process.cwd(), yes = false } = options
   const ui = createUI('gas-app rollback')
 
   const listed = listVersions(envName, options)
@@ -231,6 +217,10 @@ export function rollback(
   }
 
   if (!yes) {
+    const confirm =
+      options.confirm ??
+      ((question: string) =>
+        promptYesNo(question, `gas-app rollback ${entry.name} ${target.versionNumber} --yes`))
     const from = listed.currentIsHead
       ? '@HEAD'
       : listed.current

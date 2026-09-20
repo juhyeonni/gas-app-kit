@@ -7,15 +7,14 @@
  * push sequence, then a deployment pointer move.
  */
 
-import * as fs from 'node:fs'
-
 import { loadEnvs, resolveEnv, saveEnvs, EnvsError, type EnvEntry, type LoadEnvsOptions } from './envs.ts'
 import { formatDescription, readShortSha, resolveVersion } from './version.ts'
-import { assertEnvMatch, writeClaspConfig } from './project.ts'
+import { assertEnvMatch, assertProvisioned, writeClaspConfig } from './project.ts'
 import { withManifest } from './manifest.ts'
 import { resolveBuildCommand, runBuild } from './build.ts'
 import { runGate, type GateResult } from './gate.ts'
 import { claspJson, type DeploymentRow } from './clasp.ts'
+import { promptYesNo } from './prompt.ts'
 import { webAppUrl } from './links.ts'
 import { createUI } from './ui.mjs'
 
@@ -40,11 +39,30 @@ function claspForEnv<T>(entry: EnvEntry, args: string[], cwd: string, buildDir: 
   )
 }
 
+/**
+ * The local-write policy, checked by both write paths.
+ *
+ * `push` needs this as much as `deploy` does: `clasp push` replaces the
+ * script's HEAD code, and container-bound triggers and `onOpen` menus run from
+ * HEAD rather than from the deployed version — so a push changes behaviour for
+ * every user of that Sheet immediately, and `rollback` cannot undo it.
+ */
+function assertLocalDeployAllowed(entry: EnvEntry, env: Record<string, string | undefined>): void {
+  if (env.CI === 'true' || entry.allowLocalDeploy) return
+  throw new EnvsError(
+    `Environment "${entry.name}" has allowLocalDeploy: false — writing to it from a local machine is refused. ` +
+      `This covers push as well as deploy: a push overwrites the script's HEAD code, which bound triggers and onOpen menus run from immediately. ` +
+      `Do it from CI, or set the flag in envs.json if that policy is wrong.`
+  )
+}
+
 export function push(envName: string | undefined, options: PushOptions = {}): PushResult {
   const { cwd = process.cwd(), skipChecks = false, noBuild = false, env = process.env } = options
   const ui = createUI('gas-app push')
 
   const entry = resolveEnv(loadEnvs({ ...options, cwd, env }), envName)
+  assertProvisioned(entry)
+  assertLocalDeployAllowed(entry, env)
   const buildDir = resolveBuildCommand(cwd).buildDir
 
   // 1. Gate — cheapest check, so it fails fastest. `--no-build` implies the
@@ -106,43 +124,18 @@ export interface DeployResult extends PushResult {
   declined?: boolean
 }
 
-function promptYesNo(question: string): boolean {
-  // Only ever reached on a real TTY; every other path must refuse or proceed
-  // without asking, because a prompt inside a wrapper is the problem being closed.
-  if (!process.stdin.isTTY) return true
-  process.stdout.write(`${question} [y/N] `)
-  const buffer = Buffer.alloc(8)
-  let bytes: number
-  try {
-    // Not fd 0: touching `process.stdin` above put it in non-blocking mode, so
-    // `readSync(0)` throws EAGAIN before the user can type. `/dev/tty` blocks.
-    const tty = fs.openSync('/dev/tty', 'r')
-    try {
-      bytes = fs.readSync(tty, buffer, 0, buffer.length, null)
-    } finally {
-      fs.closeSync(tty)
-    }
-  } catch {
-    // No readable terminal is a decline, not a crash.
-    return false
-  }
-  return /^y/i.test(buffer.toString('utf-8', 0, bytes).trim())
-}
-
 export function deploy(envName: string | undefined, options: DeployOptions = {}): DeployResult {
-  const { cwd = process.cwd(), env = process.env, yes = false, confirm = promptYesNo } = options
+  const { cwd = process.cwd(), env = process.env, yes = false } = options
   const ui = createUI('gas-app deploy')
 
   const entry = resolveEnv(loadEnvs({ ...options, cwd, env }), envName)
 
-  // Refuse, never prompt-as-fallback: a TTY fallback recreates the problem for
-  // the next person running this inside a wrapper.
+  // Checked here as well as in push() so it refuses before prompting, not after.
   const inCI = env.CI === 'true'
-  if (!inCI && !entry.allowLocalDeploy) {
-    throw new EnvsError(
-      `Environment "${entry.name}" has allowLocalDeploy: false — deploying it from a local machine is refused. Deploy it from CI, or set the flag in envs.json if that policy is wrong.`
-    )
-  }
+  assertProvisioned(entry)
+  assertLocalDeployAllowed(entry, env)
+  const confirm =
+    options.confirm ?? ((question: string) => promptYesNo(question, `gas-app deploy ${entry.name} --yes`))
 
   if (options.description !== undefined && options.description.trim() === '') {
     throw new EnvsError('--description was given but is empty. Omit it entirely to derive one, or pass real text.')
