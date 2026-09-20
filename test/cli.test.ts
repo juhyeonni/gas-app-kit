@@ -283,3 +283,13 @@ test('--dry-run is accepted by push and deploy, and by nothing else', () => {
   assert.equal(run(['rollback', 'dev', '1', '--dry-run']).status, 2)
   assert.equal(run(['build', 'dev', '--dry-run']).status, 2)
 })
+
+test('a flag’s description names every command that takes it', () => {
+  // It said "envs, versions" while doctor and diff had been given it too — the
+  // sort of drift a shared description map exists to prevent.
+  const help = run(['--help']).stdout
+  const line = help.split('\n').find((l) => l.includes('--json'))
+  for (const command of ['doctor', 'diff', 'envs', 'versions']) {
+    assert.match(line, new RegExp(command), `--json is accepted by ${command} and must say so`)
+  }
+})

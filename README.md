@@ -108,6 +108,7 @@ gas-app envs add dev           # create a new Apps Script project and register i
 gas-app envs add dev --script-id 1abc…   # …or register one that already exists
 gas-app envs add dev --type sheets       # …or create one bound to a new Spreadsheet/Doc/etc.
 gas-app open [env]             # editor and web-app URLs
+gas-app diff <env>             # did someone edit this script in the Apps Script editor?
 gas-app build <env>            # run your build with BUILD_ENV set, then stamp the output
 gas-app push <env>             # gate → build → verify the stamp → clasp push
 gas-app deploy <env>           # push, then create a version and move the deployment pointer
@@ -135,7 +136,7 @@ rather than something silently ignored:
 | `--skip-checks`, `--no-build`, `--dry-run` | `push`, `deploy` |
 | `--description <text>` | `deploy` — the deployment label, otherwise derived |
 | `--yes` | `deploy`, `rollback` |
-| `--json` | `doctor`, `envs`, `versions` — print the result for a machine instead of for reading |
+| `--json` | `doctor`, `diff`, `envs`, `versions` — print the result for a machine instead of for reading |
 
 `gas-app <command> --help` prints one command on its own: its usage, the flags it takes, and the
 behaviour a flag list cannot convey — which commands confirm, what `rollback` does with no version,
@@ -217,6 +218,30 @@ ASIDE sets up TypeScript, lint, tests and bundling, and gives you two environmen
 What you gain is the part ASIDE leaves out: more than two environments, a policy flag that keeps
 production writes off laptops, a refusal when the artefact in `build/` was made for a different
 environment, and `rollback`.
+
+## When someone edits the script in the editor
+
+The Apps Script editor is always there and always writable by anyone with access, so "someone fixed
+it in the UI" is the usual way a project drifts from its repository. Nothing notices on its own:
+`envs` still reports the deployment's version, because the pointer never moved, and the next `push`
+overwrites the edit with no diff and no warning.
+
+```bash
+gas-app diff production
+```
+
+It pulls the remote into a temporary directory and compares it against your build directory — what
+a push *would* upload. Your working tree and your build are untouched. It exits `1` when they
+differ, like `git diff --exit-code`, so a CI job can use it as a check.
+
+Two details that decide whether the answer is believable:
+
+- **Files are matched by name without the extension.** Apps Script stores a name and a type, not a
+  filename: a `Code.gs` you pushed comes back from a pull as `Code.js`. Matching on the full
+  filename would report every file as drifted.
+- **`appsscript.json` is reported separately.** clasp normalises the manifest on push — filling in
+  `timeZone`, `runtimeVersion` and `exceptionLogging` — so a difference there is usually that, not
+  an edit. It never sets the drift verdict on its own.
 
 ## What it actually guards
 
@@ -306,8 +331,8 @@ script that writes into `build/` works just as well.
 
 ## Status
 
-The registry, clasp safety layer, build wrapper, quality gate, push/deploy, rollback, `doctor` and
-`--dry-run` are built and tested. Still to come: a reusable CI deploy workflow, a runtime endpoint
+The registry, clasp safety layer, build wrapper, quality gate, push/deploy, rollback, `doctor`,
+`--dry-run` and `diff` are built and tested. Still to come: a reusable CI deploy workflow, a runtime endpoint
 for the deployed build identity, and build observability.
 
 ## License

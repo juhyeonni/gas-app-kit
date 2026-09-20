@@ -83,6 +83,13 @@ export {
   type CheckLevel,
   type DoctorOptions,
 } from './commands/doctor.ts'
+export {
+  diffEnv,
+  type DiffResult,
+  type DiffEntry,
+  type FileVerdict,
+  type DiffOptions,
+} from './commands/diff.ts'
 export { runGate, type GateResult, type CheckResult, type CheckStatus, type RunGateOptions } from './gate.ts'
 
 // Talking to clasp directly, for the one-off this tool does not wrap.

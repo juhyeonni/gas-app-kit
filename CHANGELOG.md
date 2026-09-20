@@ -31,6 +31,15 @@ the conventions every other CLI follows.
   version is omitted, what `envs add` creates in your Drive. It printed the global page before,
   which is eleven options of which `versions` accepts two. The help renders from the same list the
   stray-flag check reads, so a flag cannot be accepted by a command whose help omits it. ([#41])
+- **`gas-app diff <env>`** — compare an environment against your build and find out whether someone
+  edited the script in the Apps Script editor. Nothing noticed before: the deployment pointer does
+  not move when someone edits HEAD, so `envs` still reported a version while the next `push` would
+  overwrite the edit with no diff and no warning. Read-only — it pulls into a temporary directory,
+  never the working tree, because a pull into `rootDir` would destroy the build being compared.
+  Exits 1 on a difference, like `git diff --exit-code`, so CI can use it. Files are matched by name
+  without the extension, because a `Code.gs` that was pushed comes back from a pull as `Code.js`
+  (verified against a real project), and `appsscript.json` is reported separately because clasp
+  normalises the manifest on push. ([#52])
 - **`gas-app doctor`** — clasp's presence and major version, who you are authenticated as, where
   the registry came from and whether `$GAS_APP_ENVS_JSON` has made it read-only, the build command
   and directory, the stamp, and each environment's state. All of it was previously discoverable
@@ -259,3 +268,4 @@ First published release.
 [#51]: https://github.com/juhyeonni/gas-app-kit/issues/51
 [#53]: https://github.com/juhyeonni/gas-app-kit/issues/53
 [#54]: https://github.com/juhyeonni/gas-app-kit/issues/54
+[#52]: https://github.com/juhyeonni/gas-app-kit/issues/52

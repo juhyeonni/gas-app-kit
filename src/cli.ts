@@ -15,6 +15,7 @@ import { EnvsError, loadEnvs, resolveEnv } from './envs.ts'
 import { envsCommand } from './commands/envs.ts'
 import { openCommand } from './commands/open.ts'
 import { doctorCommand } from './commands/doctor.ts'
+import { diffCommand } from './commands/diff.ts'
 import { addEnv } from './envs-add.ts'
 import { runBuild } from './build.ts'
 import { push, deploy } from './deploy.ts'
@@ -121,6 +122,19 @@ const COMMANDS: Record<string, CommandSpec> = {
       'Creates a new immutable version and moves the deployment pointer at it.',
     ],
   },
+  diff: {
+    summary: 'compare an environment against your build — did someone edit it in the editor?',
+    usage: 'diff <env>',
+    flags: ['json'],
+    notes: [
+      'Compares what a push would upload against what the script actually holds, by pulling the',
+      'remote into a temporary directory. Read-only: your working tree and build are untouched.',
+      'Exits 1 when they differ, like "git diff --exit-code", so CI can use it as a check.',
+      'Files are matched by name without extension — the same Apps Script file is Code.gs locally',
+      'and can come back as Code.js. appsscript.json is reported separately, because clasp',
+      'normalises the manifest on push and that difference is usually not an edit.',
+    ],
+  },
   versions: {
     summary: 'list the versions an environment can be rolled back to',
     usage: 'versions <env>',
@@ -168,7 +182,7 @@ const FLAGS: Record<string, string> = {
   'dry-run': 'push, deploy: run the gate, build and checks, then stop before uploading',
   description: 'deploy: label for the deployment (default: derived from version + sha)',
   yes: 'deploy, rollback: skip the confirmation prompt',
-  json: 'envs, versions: print the result as JSON instead of for reading',
+  json: 'doctor, diff, envs, versions: print the result as JSON instead of for reading',
   help: 'show this message',
   version: 'print the gas-app-kit version',
 }
@@ -426,6 +440,10 @@ function main(argv: string[]): number {
     // `exit 1` here would read as a CI failure when nothing went wrong.
     void result.declined
     return EXIT_OK
+  }
+
+  if (command === 'diff') {
+    return diffCommand(envName, { ...context, json })
   }
 
   if (command === 'versions') {
