@@ -1,15 +1,22 @@
 {
   "name": "gas-app-kit",
   "version": "0.2.0",
-  "description": "Environment registry, build orchestration, deployment and rollback for Google Apps Script projects",
+  "description": "Several environments, a policy gate and one-command rollback for Google Apps Script projects",
   "type": "module",
   "license": "MIT",
   "author": "juhyeonni",
   "keywords": [
     "google-apps-script",
+    "apps-script",
+    "gas",
     "clasp",
     "deploy",
+    "deployment",
     "rollback",
+    "environments",
+    "multi-environment",
+    "ci",
+    "google-workspace",
     "cli"
   ],
   "engines": {
@@ -63,7 +70,9 @@
     "access": "public"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   },
   "repository": {
     "type": "git",
