@@ -248,7 +248,7 @@ environment, and `rollback`.
 
 ## As a library
 
-The functions the CLI uses are importable directly, so your own scripts do not have to shell out:
+The operations the CLI performs are importable, so your own scripts do not have to shell out:
 
 ```js
 import { collectBuildInfo, loadEnvs, resolveEnv } from 'gas-app-kit'
@@ -261,6 +261,18 @@ const info = collectBuildInfo({ env: process.env.BUILD_ENV ?? 'dev' })
 const env = resolveEnv(loadEnvs(), 'production')
 console.log(env.scriptId)
 ```
+
+What the main entry point holds: the registry (`loadEnvs`, `saveEnvs`, `resolveEnv`, `envState`,
+`EnvsError`), provisioning (`addEnv`), the operations (`push`, `deploy`, `listVersions`, `rollback`,
+`runBuild`, `resolveBuildCommand`), build identity (`collectBuildInfo`, `resolveVersion`,
+`formatDescription`), preflight (`runDoctor`, `runGate`), `claspJson` and `listDeployments` for the
+one-off this tool does not wrap, the URL helpers, and `buildWebApp`.
+
+Everything else this package contains is under **`gas-app-kit/internal`** — the stamp and generated
+clasp config, the manifest guard, `buildWebApp`'s own string handling, the CLI's output helpers.
+It is reachable, and it carries no compatibility promise: it can change in any release. Needing
+something from there is worth an issue, because it probably means the public surface is missing
+something.
 
 ESM only. Types are published alongside.
 

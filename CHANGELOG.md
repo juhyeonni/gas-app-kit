@@ -9,6 +9,21 @@ Findings from a competitive-landscape and CLI UX review: the tool measured again
 `@google/aside`, `ascol` and a raw clasp v3 pipeline, and its own CLI read against
 the conventions every other CLI follows.
 
+### ⚠️ Breaking
+
+- **The library surface is narrowed.** The main entry point re-exported everything in `src/` — 44
+  values and 29 types — which made `escapeCssForGas`, `brokenLinks`, `writeStamp` and the CLI's own
+  output helpers into public API by accident of being in the barrel file. Concretely, `createUI`
+  being exported meant the tool's output format could not be tidied without a breaking change, and
+  `buildWebApp`'s internals were frozen despite that function being documented as optional and
+  replaceable.
+
+  The main entry is now a choice: the registry, provisioning, the operations, build identity,
+  `runDoctor` / `runGate`, `claspJson` / `listDeployments`, the URL helpers and `buildWebApp`.
+  Everything else moves to **`gas-app-kit/internal`**, which carries no compatibility promise — a
+  removal would be worse than a move, so nothing is gone. A test pins both lists, because this
+  happened by accident once already. ([#54])
+
 ### Added
 
 - **`gas-app <command> --help`** prints that command on its own: its usage, the flags it takes, and
@@ -237,3 +252,4 @@ First published release.
 [#50]: https://github.com/juhyeonni/gas-app-kit/issues/50
 [#51]: https://github.com/juhyeonni/gas-app-kit/issues/51
 [#53]: https://github.com/juhyeonni/gas-app-kit/issues/53
+[#54]: https://github.com/juhyeonni/gas-app-kit/issues/54
