@@ -262,6 +262,13 @@ export function rollback(
   }
 
   ui.item(`"${entry.name}" now serves version ${target.versionNumber} (${target.description})`)
+  // Google reports the moved pointer on a lag: for a short window after this
+  // write, list-deployments still returns the previous versionNumber, so the
+  // next `gas-app envs` contradicts the line above. Under incident pressure
+  // that reads as "the rollback did not work" and invites a second one — which
+  // does not take the already-there branch either, and writes again. Say so,
+  // rather than leaving the user to infer a failure that did not happen.
+  ui.info('applied — Google can take a moment to report it, so "gas-app envs" may briefly still show the previous version')
   ui.info(webAppUrl(entry.deploymentId))
   return { entry, target, noop: false }
 }
