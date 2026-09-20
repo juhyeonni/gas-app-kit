@@ -250,3 +250,36 @@ test('a reader that stops early does not produce a crash', () => {
   assert.doesNotMatch(result.stderr, /EPIPE/)
   assert.match(result.stdout, /Usage: gas-app/)
 })
+
+test('doctor fails when clasp cannot be found, and says how to install it', () => {
+  // `run` empties PATH, so this is the "clasp is missing" case by construction.
+  const { status, out } = run(['doctor'])
+  assert.equal(status, 1)
+  assert.match(out, /clasp/)
+  assert.match(out, /@google\/clasp/)
+  assert.match(out, /not checked — clasp is unavailable/, 'auth is not guessed at when clasp is absent')
+})
+
+test('doctor --json carries the levels and an ok verdict', () => {
+  const { status, stdout } = run(['doctor', '--json'])
+  assert.equal(status, 1)
+  const result = JSON.parse(stdout)
+  assert.equal(result.ok, false)
+  assert.equal(result.checks.find((c) => c.name === 'clasp').level, 'fail')
+  // Registered-but-unprovisioned is a state, not a defect: it must not fail the run.
+  assert.equal(result.checks.find((c) => c.name === 'env:fresh').level, 'warn')
+})
+
+test('doctor reports a missing registry as the failure it is', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gas-app-doctor-'))
+  const { status, out } = run(['doctor'], { cwd: dir })
+  assert.equal(status, 1)
+  assert.match(out, /any parent directory/)
+})
+
+test('--dry-run is accepted by push and deploy, and by nothing else', () => {
+  assert.match(run(['push', '--help']).stdout, /--dry-run/)
+  assert.match(run(['deploy', '--help']).stdout, /--dry-run/)
+  assert.equal(run(['rollback', 'dev', '1', '--dry-run']).status, 2)
+  assert.equal(run(['build', 'dev', '--dry-run']).status, 2)
+})

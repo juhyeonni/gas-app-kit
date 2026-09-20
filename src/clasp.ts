@@ -99,3 +99,53 @@ export interface VersionRowRaw {
 export function listVersionRows(scriptId: string): ClaspResult<VersionRowRaw[]> {
   return claspJson<VersionRowRaw[]>(['list-versions', scriptId])
 }
+
+/**
+ * clasp's reported version, or null when it is not on PATH at all.
+ *
+ * Here rather than in envs-add.ts, where it used to live: every command shells
+ * out to clasp, but only project creation checked that clasp was the right one,
+ * so a v2 install was named clearly during `envs add` and then failed deep
+ * inside clasp everywhere else.
+ */
+export function claspVersion(): string | null {
+  const probe = spawnSync('clasp', ['--version'], {
+    encoding: 'utf-8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  })
+  if (probe.error || probe.status !== 0) return null
+  return probe.stdout.trim()
+}
+
+/**
+ * Whether the installed clasp is one this tool can drive.
+ *
+ * An unparseable version is let through: a false reject is worse than a late
+ * failure, and clasp has shipped version strings this parse does not expect.
+ */
+export function claspSupported(version: string): boolean {
+  const major = Number.parseInt(version, 10)
+  return Number.isNaN(major) || major >= 3
+}
+
+/**
+ * Who clasp is authenticated as. Detection only — `clasp login` is
+ * browser-interactive, and launching it from a CI-drivable command reintroduces
+ * exactly the interactivity the rest of this tool removes.
+ */
+export function claspAuthorizedUser(): { loggedIn: boolean; email?: string } {
+  const probe = spawnSync('clasp', ['show-authorized-user', '--json'], {
+    encoding: 'utf-8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  if (probe.error || probe.status !== 0) return { loggedIn: false }
+  try {
+    const parsed = JSON.parse(probe.stdout) as { loggedIn?: boolean; email?: string }
+    if (!parsed || Object.keys(parsed).length === 0) return { loggedIn: false }
+    // clasp v3 reports `loggedIn` explicitly; older shapes only carried fields.
+    if (parsed.loggedIn === false) return { loggedIn: false }
+    return parsed.email ? { loggedIn: true, email: parsed.email } : { loggedIn: true }
+  } catch {
+    return { loggedIn: false }
+  }
+}

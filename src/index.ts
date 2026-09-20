@@ -90,4 +90,11 @@ export {
   type CheckStatus,
   type RunGateOptions,
 } from './gate.ts'
+export {
+  runDoctor,
+  type DoctorResult,
+  type DoctorCheck,
+  type CheckLevel,
+  type DoctorOptions,
+} from './commands/doctor.ts'
 export { createUI } from './ui.mjs'

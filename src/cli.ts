@@ -14,6 +14,7 @@ import * as path from 'node:path'
 import { EnvsError, loadEnvs, resolveEnv } from './envs.ts'
 import { envsCommand } from './commands/envs.ts'
 import { openCommand } from './commands/open.ts'
+import { doctorCommand } from './commands/doctor.ts'
 import { addEnv } from './envs-add.ts'
 import { runBuild } from './build.ts'
 import { push, deploy } from './deploy.ts'
@@ -58,6 +59,17 @@ interface CommandSpec {
 }
 
 const COMMANDS: Record<string, CommandSpec> = {
+  doctor: {
+    summary: 'check clasp, authentication, the registry and the build, and say what is wrong',
+    usage: 'doctor',
+    flags: ['json'],
+    notes: [
+      'Read-only: it writes no file and touches no deployment. Exits non-zero only when',
+      'something makes every remote command impossible — clasp missing or the wrong major',
+      'version, no authentication, an unreadable registry. Not having built yet, and an',
+      'environment with no scriptId, are states rather than defects and do not fail it.',
+    ],
+  },
   envs: {
     summary: 'list registered environments and their state',
     usage: 'envs',
@@ -90,8 +102,10 @@ const COMMANDS: Record<string, CommandSpec> = {
   push: {
     summary: 'gate, build, verify, then push the code to an environment',
     usage: 'push <env>',
-    flags: ['skip-checks', 'no-build'],
+    flags: ['skip-checks', 'no-build', 'dry-run'],
     notes: [
+      '--dry-run runs the gate, the build and the stamp check, then stops before the upload.',
+      'The policy flag is evaluated, not bypassed: the point is to see a refusal safely.',
       'Refused unless the environment has "allowLocalDeploy": true, or CI=true. A push',
       "replaces the script's HEAD code, which bound triggers and onOpen menus run from",
       'immediately — rollback cannot undo it, which is why it is gated like deploy.',
@@ -100,7 +114,7 @@ const COMMANDS: Record<string, CommandSpec> = {
   deploy: {
     summary: 'push, then create or update the environment’s deployment',
     usage: 'deploy <env>',
-    flags: ['skip-checks', 'no-build', 'description', 'yes'],
+    flags: ['skip-checks', 'no-build', 'dry-run', 'description', 'yes'],
     notes: [
       'Confirms first. With no terminal to ask on it refuses rather than assuming consent —',
       'pass --yes, or set CI=true, to state the intent explicitly.',
@@ -151,6 +165,7 @@ const FLAGS: Record<string, string> = {
   force: 'envs add: overwrite an existing registry entry',
   'skip-checks': 'push, deploy: skip the typecheck/test gate',
   'no-build': 'push, deploy: push what is already built and stamped',
+  'dry-run': 'push, deploy: run the gate, build and checks, then stop before uploading',
   description: 'deploy: label for the deployment (default: derived from version + sha)',
   yes: 'deploy, rollback: skip the confirmation prompt',
   json: 'envs, versions: print the result as JSON instead of for reading',
@@ -167,6 +182,7 @@ const FLAG_SPELLING: Record<string, string> = {
   force: '--force',
   'skip-checks': '--skip-checks',
   'no-build': '--no-build',
+  'dry-run': '--dry-run',
   description: '--description <t>',
   yes: '--yes',
   json: '--json',
@@ -188,6 +204,7 @@ const OPTIONS = {
   force: { type: 'boolean' },
   'skip-checks': { type: 'boolean' },
   'no-build': { type: 'boolean' },
+  'dry-run': { type: 'boolean' },
   description: { type: 'string' },
   yes: { type: 'boolean' },
   json: { type: 'boolean' },
@@ -382,8 +399,17 @@ function main(argv: string[]): number {
     return envsCommand({ ...context, json })
   }
 
+  if (command === 'doctor') {
+    return doctorCommand({ ...context, json })
+  }
+
   if (command === 'push') {
-    push(envName, { ...context, skipChecks: values['skip-checks'], noBuild: values['no-build'] })
+    push(envName, {
+      ...context,
+      skipChecks: values['skip-checks'],
+      noBuild: values['no-build'],
+      dryRun: values['dry-run'],
+    })
     return EXIT_OK
   }
 
@@ -392,6 +418,7 @@ function main(argv: string[]): number {
       ...context,
       skipChecks: values['skip-checks'],
       noBuild: values['no-build'],
+      dryRun: values['dry-run'],
       description: values.description,
       yes: values.yes,
     })

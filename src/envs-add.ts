@@ -23,6 +23,7 @@ import {
   type EnvRegistry,
 } from './envs.ts'
 import { DEFAULT_BUILD_DIR } from './project.ts'
+import { claspVersion, claspSupported, claspAuthorizedUser } from './clasp.ts'
 
 export interface AddEnvOptions {
   /** Register this existing project instead of creating one. */
@@ -45,35 +46,6 @@ export interface AddEnvResult {
   deploymentCleared: boolean
 }
 
-/** clasp's reported version, or null when it is not on PATH at all. */
-function claspVersion(): string | null {
-  const probe = spawnSync('clasp', ['--version'], {
-    encoding: 'utf-8',
-    stdio: ['ignore', 'pipe', 'ignore'],
-  })
-  if (probe.error || probe.status !== 0) return null
-  return probe.stdout.trim()
-}
-
-/**
- * Detect authentication — never fix it. `clasp login` is browser-interactive,
- * and auto-launching it from a command meant to be CI-drivable reintroduces
- * exactly the interactivity the rest of this tool removes (NG-3).
- */
-function claspLoggedIn(): boolean {
-  const probe = spawnSync('clasp', ['show-authorized-user', '--json'], {
-    encoding: 'utf-8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  if (probe.error || probe.status !== 0) return false
-  try {
-    const parsed = JSON.parse(probe.stdout) as Record<string, unknown>
-    return Boolean(parsed && Object.keys(parsed).length > 0)
-  } catch {
-    return false
-  }
-}
-
 function preflight(): void {
   const version = claspVersion()
   if (version === null) {
@@ -88,14 +60,13 @@ function preflight(): void {
   // nothing that names the cause: create-script was `create` in v2, and the
   // global --json flag this tool parses every answer from is v3-only. An
   // unparseable version is let through — a false reject is worse than a late one.
-  const major = Number.parseInt(version, 10)
-  if (!Number.isNaN(major) && major < 3) {
+  if (!claspSupported(version)) {
     throw new EnvsError(
       `clasp ${version} is installed, but gas-app-kit needs v3 — it relies on "create-script" and the global --json flag. ` +
         'Upgrade with "pnpm add -D @google/clasp@^3".'
     )
   }
-  if (!claspLoggedIn()) {
+  if (!claspAuthorizedUser().loggedIn) {
     throw new EnvsError(
       'clasp is installed but not authenticated. Run "pnpm exec clasp login" yourself — this command never launches a browser prompt on your behalf.'
     )
