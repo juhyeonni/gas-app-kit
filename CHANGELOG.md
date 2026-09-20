@@ -9,6 +9,28 @@ Findings from a competitive-landscape and CLI UX review: the tool measured again
 `@google/aside`, `ascol` and a raw clasp v3 pipeline, and its own CLI read against
 the conventions every other CLI follows.
 
+### Added
+
+- **`gas-app <command> --help`** prints that command on its own: its usage, the flags it takes, and
+  the behaviour a flag list cannot convey — which commands confirm, what `rollback` does when the
+  version is omitted, what `envs add` creates in your Drive. It printed the global page before,
+  which is eleven options of which `versions` accepts two. The help renders from the same list the
+  stray-flag check reads, so a flag cannot be accepted by a command whose help omits it. ([#41])
+- **`--json` on `envs` and `versions`.** One object to stdout and nothing else, so a pipeline can
+  trust that stdout parses or the command failed. A version that could not be read is `null` with a
+  `degraded` field saying why — "could not ask" and "no version" are different answers. Refusals
+  stay on stderr with the exit codes they had. ([#43])
+
+### Fixed
+
+- **Piping into a reader that stops early no longer ends in a stack trace.** `gas-app --help |
+  head -3` failed with an unhandled EPIPE, reproducibly, for a command that did its job. A closed
+  reader is not a refusal and no longer exits like one. ([#57])
+- **`rollback` says its result may take a moment to be visible.** Google reports the moved pointer
+  on a lag, so the next `gas-app envs` could still show the previous version — which under incident
+  pressure reads as "the rollback did not work" and invites a second one, which did not take the
+  already-there branch either and wrote again. ([#56])
+
 ### Fixed
 
 - **`envs.json` keys this tool does not recognise are no longer deleted.** The registry was
@@ -187,3 +209,7 @@ First published release.
 [#39]: https://github.com/juhyeonni/gas-app-kit/issues/39
 [#40]: https://github.com/juhyeonni/gas-app-kit/issues/40
 [#42]: https://github.com/juhyeonni/gas-app-kit/issues/42
+[#41]: https://github.com/juhyeonni/gas-app-kit/issues/41
+[#43]: https://github.com/juhyeonni/gas-app-kit/issues/43
+[#56]: https://github.com/juhyeonni/gas-app-kit/issues/56
+[#57]: https://github.com/juhyeonni/gas-app-kit/issues/57

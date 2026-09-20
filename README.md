@@ -134,9 +134,23 @@ rather than something silently ignored:
 | `--skip-checks`, `--no-build` | `push`, `deploy` |
 | `--description <text>` | `deploy` — the deployment label, otherwise derived |
 | `--yes` | `deploy`, `rollback` |
+| `--json` | `envs`, `versions` — print the result for a machine instead of for reading |
+
+`gas-app <command> --help` prints one command on its own: its usage, the flags it takes, and the
+behaviour a flag list cannot convey — which commands confirm, what `rollback` does with no version,
+what `envs add` creates in your Drive.
 
 To stamp a deployment with a version of your own, use `--description`. `--version` is the boolean
 "print the gas-app-kit version" and takes no value.
+
+`--json` writes one object to stdout and nothing else, so a pipeline can trust that stdout parses
+or the command failed. Refusals stay on stderr with the exit codes they always had, and a version
+that could not be read is `null` with a `degraded` field saying why — "could not ask" and "no
+version" are different answers:
+
+```bash
+gas-app envs --json | jq -r '.production.versionNumber'
+```
 
 Exit codes: `0` success, `1` failure, `2` usage error. Every refused operation is a non-zero exit —
 there is no warn-and-continue path. An environment that is merely *not deployed yet* is a state, not
