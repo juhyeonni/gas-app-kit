@@ -1,0 +1,144 @@
+# Changelog
+
+Notable changes to `gas-app-kit`. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.3.0] — 2026-09-20
+
+Closes the 19 findings of a red-team review that read the CLI as someone who had
+never used clasp. The theme of almost all of them: a command that ended without
+saying what to do next, or one that said something untrue.
+
+### ⚠️ Breaking
+
+- **`deploy` no longer confirms on your behalf when there is no terminal.** It
+  treated "stdin is not a TTY" as *yes*, so every npm script, `turbo`, `make`,
+  `| tee deploy.log` and IDE task deployed unconfirmed — the opposite of what the
+  README promised. Automation must now pass `--yes` or set `CI=true`, which is
+  how it states the intent explicitly. ([#9])
+- **`push` is gated by `allowLocalDeploy`**, which only `deploy` checked before.
+  `clasp push` replaces the script's HEAD code, and container-bound triggers and
+  `onOpen` menus run from HEAD rather than from the deployed version — so a push
+  changes behaviour immediately and `rollback` cannot undo it. ([#10])
+- **`deploy <env> --version 1.2.3` is a usage error** instead of printing the
+  package version and exiting 0 without deploying. Use `--description` to label a
+  deployment. ([#13])
+- **A flag aimed at a command that ignores it is a usage error.** `push --yes`
+  and `build --skip-checks` were accepted and silently discarded. ([#17])
+- **`open <env>` on an undeployed environment exits 0**, like the argument-less
+  form of the same command always has. Not deployed yet is a state, not a
+  failure. ([#24])
+- **Manifest drift found after a successful push warns instead of exiting 1.**
+  Drift found *before* the call is still a refusal. ([#11])
+- **clasp v2 is refused by name** during `envs add` preflight, instead of passing
+  and then failing deep inside clasp. ([#21])
+
+### Fixed
+
+- `rollback`'s confirmation declined itself before you could type, then exited 0.
+  It read fd 0, which `process.stdin.isTTY` has already switched to non-blocking
+  mode, so `readSync` threw EAGAIN. The prompt is now one shared implementation
+  with `deploy`, which had been fixed for this in 0.1.3 and never carried across.
+  ([#8])
+- `envs add --force` kept the old `deploymentId` when the scriptId changed,
+  leaving an entry whose pointer belonged to the previous script. ([#18])
+- `buildWebApp()` died with a raw `ENOENT` out of `copyFileSync` when the project
+  had no `appsscript.json` — after three of its four steps had succeeded. ([#12])
+- Filesystem failures (a read-only checkout, an unwritable `--envs` path, a full
+  disk) reached the user as Node stack traces rather than refusals. ([#22])
+- `rollback` ignored `gasApp.buildDir`, leaving the manifest guard watching a
+  directory the project may not use. ([#25])
+
+### Changed
+
+- `--help` lists the four flags that were missing and act — `--skip-checks`,
+  `--no-build`, `--description`, `--yes` — each with the commands it belongs to.
+  A bare `--help` goes to stdout and exits 0. ([#16])
+- `envs <anything>` no longer suggests `envs add <anything>` as its only option:
+  that command provisions a real Apps Script project in your Drive, and `envs
+  list` is a common guess. ([#19])
+- `envs add` now prints the editor URL, the next command, and the policy flag
+  that would otherwise refuse it. ([#14])
+- `push` prints the editor URL, which `deploy` and `rollback` already did.
+  ([#25])
+- The `deploy` confirmation quotes its label and calls it a new immutable
+  version, and says so when no git commit was recorded. ([#25])
+- Under `$GAS_APP_ENVS_JSON`, a `deploy` that cannot record a new deployment id
+  names the variable rather than telling you to edit a file that is not read.
+  ([#23])
+- `parseArgs` errors no longer carry Node's own advice about positional
+  arguments. ([#25])
+
+### Added
+
+- `deploy` and `rollback` print the deployed web-app URL, so reading it no longer
+  needs a second command — which after a rollback, in an incident, is one command
+  too many.
+- `CHANGELOG.md`, and it ships in the published package.
+
+### Documentation
+
+- The README opens by saying what this is **not**: not a scaffolder, and
+  complementary to `create-gas-app` rather than competing with it. ([#15])
+- Install shows `pnpm exec gas-app` / `npx -p gas-app-kit gas-app`. Every example
+  ran a bare `gas-app`, and `npx gas-app` fetches an unrelated package of that
+  name. ([#7])
+- scriptId, deploymentId, "version n", `@HEAD`, `rootDir`, `appsscript.json` and
+  bound vs standalone are defined, with where to find each id. ([#14])
+- The generated `clasp.<env>.json` and `appsscript.json.clasp` files are
+  documented, with the `.gitignore` lines. ([#20])
+- A migration table for anyone arriving from a raw `clasp push` pipeline. ([#2])
+- Expanded npm keywords. ([#3])
+
+## [0.2.0] — 2026-09-06
+
+### Added
+
+- `buildWebApp()` — the Apps Script web-app bundle as a library call: client
+  through Vite, server through esbuild, then HTML that inlines both for
+  `HtmlService`. `vite` and `esbuild` are optional peer dependencies.
+
+## [0.1.3] — 2026-09-06
+
+### Fixed
+
+- The `deploy` confirmation read `/dev/tty` instead of fd 0, which
+  `process.stdin.isTTY` had already made non-blocking.
+
+## [0.1.2] — 2026-09-06
+
+### Added
+
+- `envs add --type` is passed through to `clasp create-script`, so an
+  environment can be created bound to a new Spreadsheet, Doc and so on.
+
+## [0.1.1] — 2026-09-01
+
+First published release.
+
+[0.3.0]: https://github.com/juhyeonni/gas-app-kit/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/juhyeonni/gas-app-kit/compare/v0.1.3...v0.2.0
+[0.1.3]: https://github.com/juhyeonni/gas-app-kit/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/juhyeonni/gas-app-kit/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/juhyeonni/gas-app-kit/releases/tag/v0.1.1
+[#2]: https://github.com/juhyeonni/gas-app-kit/issues/2
+[#3]: https://github.com/juhyeonni/gas-app-kit/issues/3
+[#7]: https://github.com/juhyeonni/gas-app-kit/issues/7
+[#8]: https://github.com/juhyeonni/gas-app-kit/issues/8
+[#9]: https://github.com/juhyeonni/gas-app-kit/issues/9
+[#10]: https://github.com/juhyeonni/gas-app-kit/issues/10
+[#11]: https://github.com/juhyeonni/gas-app-kit/issues/11
+[#12]: https://github.com/juhyeonni/gas-app-kit/issues/12
+[#13]: https://github.com/juhyeonni/gas-app-kit/issues/13
+[#14]: https://github.com/juhyeonni/gas-app-kit/issues/14
+[#15]: https://github.com/juhyeonni/gas-app-kit/issues/15
+[#16]: https://github.com/juhyeonni/gas-app-kit/issues/16
+[#17]: https://github.com/juhyeonni/gas-app-kit/issues/17
+[#18]: https://github.com/juhyeonni/gas-app-kit/issues/18
+[#19]: https://github.com/juhyeonni/gas-app-kit/issues/19
+[#20]: https://github.com/juhyeonni/gas-app-kit/issues/20
+[#21]: https://github.com/juhyeonni/gas-app-kit/issues/21
+[#22]: https://github.com/juhyeonni/gas-app-kit/issues/22
+[#23]: https://github.com/juhyeonni/gas-app-kit/issues/23
+[#24]: https://github.com/juhyeonni/gas-app-kit/issues/24
+[#25]: https://github.com/juhyeonni/gas-app-kit/issues/25
