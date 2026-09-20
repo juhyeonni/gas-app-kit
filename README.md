@@ -102,6 +102,7 @@ to put back into the variable's source. Set it in CI, not in your shell profile.
 ## Commands
 
 ```bash
+gas-app doctor                 # is this set up? clasp, auth, registry, build, stamp
 gas-app envs                   # every environment with its state
 gas-app envs add dev           # create a new Apps Script project and register it
 gas-app envs add dev --script-id 1abc…   # …or register one that already exists
@@ -131,10 +132,10 @@ rather than something silently ignored:
 | --- | --- |
 | `--envs <path>` | all — point at a registry elsewhere |
 | `--script-id`, `--title`, `--type`, `--force` | `envs add` |
-| `--skip-checks`, `--no-build` | `push`, `deploy` |
+| `--skip-checks`, `--no-build`, `--dry-run` | `push`, `deploy` |
 | `--description <text>` | `deploy` — the deployment label, otherwise derived |
 | `--yes` | `deploy`, `rollback` |
-| `--json` | `envs`, `versions` — print the result for a machine instead of for reading |
+| `--json` | `doctor`, `envs`, `versions` — print the result for a machine instead of for reading |
 
 `gas-app <command> --help` prints one command on its own: its usage, the flags it takes, and the
 behaviour a flag list cannot convey — which commands confirm, what `rollback` does with no version,
@@ -152,9 +153,30 @@ version" are different answers:
 gas-app envs --json | jq -r '.production.versionNumber'
 ```
 
+`--dry-run` runs everything this tool controls — the policy flag, the gate, your build, the stamp
+check — and stops before the first thing that would leave the machine. The flag is **evaluated, not
+bypassed**: seeing the refusal is the point, so `push production --dry-run` refuses exactly as the
+real thing would, without needing production to be your test case.
+
 Exit codes: `0` success, `1` failure, `2` usage error. Every refused operation is a non-zero exit —
 there is no warn-and-continue path. An environment that is merely *not deployed yet* is a state, not
 a refusal: `open` prints what it has and exits `0`.
+
+## Per-environment configuration is not in here
+
+This registry holds identifiers and policy flags. It does not hold your API keys, spreadsheet ids
+or endpoint URLs, and `envs add` does not set them: in Apps Script those live in **Script
+Properties**, and you set them per project under *Project Settings* in the editor.
+
+That is not an omission waiting to be filled in a patch release. The Apps Script REST API has no
+properties endpoint — the whole surface is projects, versions, deployments, `scripts.run` and
+processes — so `PropertiesService` is reachable only from inside the script itself. A CLI can only
+get at it by running a function in the deployed project, which needs the script published as an API
+executable against a standard GCP project. That is a large thing to require of every user, so this
+tool does not.
+
+What follows from it: a freshly registered environment is deployable but **unconfigured**, and
+nothing here will tell you so. If your code reads Script Properties, setting them is a step you own.
 
 ## Coming from a raw clasp pipeline
 
@@ -272,9 +294,9 @@ script that writes into `build/` works just as well.
 
 ## Status
 
-The registry, clasp safety layer, build wrapper, quality gate, push/deploy and rollback are built
-and tested. Still to come: a reusable CI deploy workflow, a runtime endpoint for the deployed build
-identity, and build observability.
+The registry, clasp safety layer, build wrapper, quality gate, push/deploy, rollback, `doctor` and
+`--dry-run` are built and tested. Still to come: a reusable CI deploy workflow, a runtime endpoint
+for the deployed build identity, and build observability.
 
 ## License
 

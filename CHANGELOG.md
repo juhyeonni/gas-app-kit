@@ -16,10 +16,31 @@ the conventions every other CLI follows.
   version is omitted, what `envs add` creates in your Drive. It printed the global page before,
   which is eleven options of which `versions` accepts two. The help renders from the same list the
   stray-flag check reads, so a flag cannot be accepted by a command whose help omits it. ([#41])
+- **`gas-app doctor`** — clasp's presence and major version, who you are authenticated as, where
+  the registry came from and whether `$GAS_APP_ENVS_JSON` has made it read-only, the build command
+  and directory, the stamp, and each environment's state. All of it was previously discoverable
+  only by running a command that wanted to do something else and reading its refusal; the clasp v3
+  check in particular existed only inside `envs add`, so a v2 install was named clearly there and
+  failed deep inside clasp everywhere else. Read-only, `--json`, and it exits non-zero only for
+  something that makes every remote command impossible — not having built yet is a state. ([#50])
+- **`--dry-run` on `push` and `deploy`.** Runs the policy check, the gate, your build and the stamp
+  verification, then stops before the first thing that would leave the machine. The policy flag is
+  evaluated, not bypassed: `push production --dry-run` refuses exactly as the real command would, so
+  production does not have to be your test case. `deploy --dry-run` also reports the label it would
+  use and whether it would create a deployment or move one, and asks nothing — there is nothing to
+  confirm. ([#51])
 - **`--json` on `envs` and `versions`.** One object to stdout and nothing else, so a pipeline can
   trust that stdout parses or the command failed. A version that could not be read is `null` with a
   `degraded` field saying why — "could not ask" and "no version" are different answers. Refusals
   stay on stderr with the exit codes they had. ([#43])
+
+
+### Documentation
+
+- **Per-environment configuration is named as out of scope, with the reason.** Script Properties are
+  the Apps Script mechanism for it, and the Apps Script REST API has no properties endpoint — so a
+  freshly registered environment is deployable but unconfigured, and setting them is a step you own.
+  Recorded so it is not re-derived. ([#53])
 
 ### Fixed
 
@@ -213,3 +234,6 @@ First published release.
 [#43]: https://github.com/juhyeonni/gas-app-kit/issues/43
 [#56]: https://github.com/juhyeonni/gas-app-kit/issues/56
 [#57]: https://github.com/juhyeonni/gas-app-kit/issues/57
+[#50]: https://github.com/juhyeonni/gas-app-kit/issues/50
+[#51]: https://github.com/juhyeonni/gas-app-kit/issues/51
+[#53]: https://github.com/juhyeonni/gas-app-kit/issues/53
