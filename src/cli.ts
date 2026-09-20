@@ -18,6 +18,7 @@ import { addEnv } from './envs-add.ts'
 import { runBuild } from './build.ts'
 import { push, deploy } from './deploy.ts'
 import { listVersions, formatVersions, rollback } from './rollback.ts'
+import { editorUrl } from './links.ts'
 import { createUI } from './ui.mjs'
 
 const EXIT_OK = 0
@@ -97,8 +98,11 @@ function main(argv: string[]): number {
   try {
     parsed = parse(argv)
   } catch (err) {
-    process.stderr.write(`${(err as Error).message}\n`)
-    usage()
+    // Node appends advice about placing positional arguments last, which is
+    // about parseArgs and not about this CLI. The first sentence names the flag,
+    // which is the whole useful part.
+    const [named] = (err as Error).message.split('. ')
+    process.stderr.write(`${named}. Run "gas-app --help" for the flags each command takes.\n`)
     return EXIT_USAGE
   }
   const { values, positionals } = parsed
@@ -185,6 +189,14 @@ function main(argv: string[]): number {
       const ui = createUI('gas-app envs add')
       ui.item(
         `${result.created ? 'created' : 'registered'} "${name}" → ${result.entry.scriptId}`
+      )
+      ui.info(`editor: ${editorUrl(result.entry.scriptId)}`)
+      // The env this just created is refused by the first deploy command the
+      // README shows, and nothing said so. Everything between here and a working
+      // push is also unlisted, so name the two prerequisites.
+      ui.info(`next: gas-app push ${name} — needs a "build" script and an appsscript.json at the project root`)
+      ui.info(
+        `deploying "${name}" from this machine is refused until you set "allowLocalDeploy": true for it in envs.json`
       )
       if (result.deploymentCleared) {
         ui.warn(
