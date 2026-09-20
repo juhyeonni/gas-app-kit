@@ -63,13 +63,17 @@ function usage(stream: { write(text: string): unknown } = process.stderr): void 
   stream.write('\nSubcommands:\n')
   stream.write('  envs add <name>   create a project, or register one with --script-id\n')
   stream.write('\nOptions:\n')
-  stream.write('  --envs <path>   path to the environment registry (default: ./envs.json)\n')
-  stream.write('  --script-id <id>  register an existing project instead of creating one\n')
-  stream.write('  --title <text>    title for a newly created project (default: the env name)\n')
-  stream.write('  --type <type>     clasp project type for envs add (default: standalone)\n')
-  stream.write('  --force           overwrite an existing registry entry\n')
-  stream.write('  -h, --help      show this message\n')
-  stream.write('  -v, --version   print the package version\n')
+  stream.write('  --envs <path>       path to the environment registry (default: ./envs.json)\n')
+  stream.write('  --script-id <id>    envs add: register an existing project instead of creating one\n')
+  stream.write('  --title <text>      envs add: title for a newly created project (default: the env name)\n')
+  stream.write('  --type <type>       envs add: clasp project type (default: standalone)\n')
+  stream.write('  --force             envs add: overwrite an existing registry entry\n')
+  stream.write('  --skip-checks       push, deploy: skip the typecheck/test gate\n')
+  stream.write('  --no-build          push, deploy: push what is already built and stamped\n')
+  stream.write('  --description <t>   deploy: label for the deployment (default: derived from version + sha)\n')
+  stream.write('  --yes               deploy, rollback: skip the confirmation prompt\n')
+  stream.write('  -h, --help          show this message\n')
+  stream.write('  -v, --version       print the gas-app-kit version\n')
   stream.write('\nExit codes: 0 success · 1 failure · 2 usage error\n\n')
 }
 
@@ -99,15 +103,32 @@ function main(argv: string[]): number {
   }
   const { values, positionals } = parsed
 
+  const [command, envName] = positionals
+
+  // `--version` is the boolean "print the package version", so next to a command
+  // it silently swallows the command and its argument: `deploy dev --version 1.2.3`
+  // printed a version number and exited 0 without deploying.
   if (values.version) {
+    if (command) {
+      process.stderr.write(
+        '--version prints the gas-app-kit version and takes no value. To label a deployment, use:\n' +
+          `  gas-app deploy ${envName ?? '<env>'} --description "1.2.3"\n`
+      )
+      return EXIT_USAGE
+    }
     console.log(packageVersion())
     return EXIT_OK
   }
 
-  const [command, envName] = positionals
-  if (!command || values.help) {
-    usage(command ? process.stdout : process.stderr)
-    return command ? EXIT_OK : EXIT_USAGE
+  // An explicit --help is what was asked for: stdout, exit 0, with or without a
+  // command. Only the empty invocation is a usage error.
+  if (values.help) {
+    usage(process.stdout)
+    return EXIT_OK
+  }
+  if (!command) {
+    usage()
+    return EXIT_USAGE
   }
 
   if (!Object.hasOwn(COMMANDS, command)) {
@@ -115,6 +136,30 @@ function main(argv: string[]): number {
       `Unknown command "${command}". Valid commands: ${Object.keys(COMMANDS).join(', ')}\n`
     )
     usage()
+    return EXIT_USAGE
+  }
+
+  // `strict: true` rejects a flag nobody declared; it says nothing about a real
+  // flag aimed at a command that ignores it. `push --yes` looked like consent
+  // and was discarded, which is worse than an error.
+  const GLOBAL_FLAGS = ['envs', 'help', 'version']
+  const TAKES: Record<string, readonly string[]> = {
+    envs: ['script-id', 'title', 'type', 'force'],
+    open: [],
+    build: [],
+    push: ['skip-checks', 'no-build'],
+    deploy: ['skip-checks', 'no-build', 'description', 'yes'],
+    versions: [],
+    rollback: ['yes'],
+  }
+  const stray = Object.keys(values).filter(
+    (flag) => !GLOBAL_FLAGS.includes(flag) && !TAKES[command]!.includes(flag)
+  )
+  if (stray.length) {
+    process.stderr.write(
+      `"${command}" does not take ${stray.map((f) => `--${f}`).join(', ')}. ` +
+        'Run "gas-app --help" for the flags each command takes.\n'
+    )
     return EXIT_USAGE
   }
 
