@@ -42,14 +42,23 @@ test('refuses to overwrite an existing entry without --force', () => {
   assert.equal(loadEnvs({ cwd, env: {} }).dev?.scriptId, 'OLD')
 })
 
-test('--force overwrites the scriptId but keeps the rest of the entry', () => {
-  const cwd = workspace({ dev: { scriptId: 'OLD', deploymentId: 'D_KEEP', allowPrerelease: true } })
-  addEnv('dev', { scriptId: 'NEW', force: true, cwd, env: {} })
+test('--force on a new scriptId drops the deploymentId, which belonged to the old script', () => {
+  const cwd = workspace({ dev: { scriptId: 'OLD', deploymentId: 'D_OLD', allowPrerelease: true } })
+  const result = addEnv('dev', { scriptId: 'NEW', force: true, cwd, env: {} })
 
   const entry = loadEnvs({ cwd, env: {} }).dev!
   assert.equal(entry.scriptId, 'NEW')
-  assert.equal(entry.deploymentId, 'D_KEEP', 'the live deployment is not orphaned by a re-register')
-  assert.equal(entry.allowPrerelease, true)
+  assert.equal(entry.deploymentId, '', 'a pointer into the previous script is not a pointer into this one')
+  assert.equal(result.deploymentCleared, true, 'the caller can say so out loud')
+  assert.equal(entry.allowPrerelease, true, 'policy flags are unrelated to which script it is')
+})
+
+test('--force re-registering the same scriptId keeps the live deployment', () => {
+  const cwd = workspace({ dev: { scriptId: 'SAME', deploymentId: 'D_KEEP' } })
+  const result = addEnv('dev', { scriptId: 'SAME', force: true, cwd, env: {} })
+
+  assert.equal(loadEnvs({ cwd, env: {} }).dev!.deploymentId, 'D_KEEP')
+  assert.equal(result.deploymentCleared, false)
 })
 
 test('existing keys keep their position; a new env is appended', () => {
@@ -118,7 +127,7 @@ const fs = require('fs')
 const args = process.argv.slice(2)
 fs.appendFileSync(${JSON.stringify(log)}, args.join(' ') + '\\n')
 const cmd = args[0]
-if (cmd === '--version') { process.exit(0) }
+if (cmd === '--version') { console.log(process.env.FAKE_CLASP_VERSION || '3.3.0'); process.exit(0) }
 if (cmd === 'show-authorized-user') { console.log(JSON.stringify({ user: 'test' })); process.exit(0) }
 if (cmd === 'create-script') { fs.writeFileSync('.clasp.json', JSON.stringify({ scriptId: 'S_NEW' })); process.exit(0) }
 process.exit(0)
@@ -160,4 +169,22 @@ test('--type is omitted from clasp create-script when not given', () => {
 
   const createCall = calls(log).find((c) => c.startsWith('create-script'))
   assert.doesNotMatch(createCall!, /--type/)
+})
+
+test('clasp v2 is refused by name, before create-script fails incomprehensibly', () => {
+  // v2 passes every "is it installed" check, then dies inside clasp: create-script
+  // was `create`, and --json does not exist.
+  const cwd = workspace()
+  fakeClasp(cwd)
+  const previous = process.env.FAKE_CLASP_VERSION
+  process.env.FAKE_CLASP_VERSION = '2.4.2'
+  try {
+    assert.throws(
+      () => withFakeClasp(cwd, () => addEnv('dev', { cwd, env: {} })),
+      (err: Error) => err.message.includes('2.4.2') && err.message.includes('needs v3')
+    )
+  } finally {
+    if (previous === undefined) delete process.env.FAKE_CLASP_VERSION
+    else process.env.FAKE_CLASP_VERSION = previous
+  }
 })

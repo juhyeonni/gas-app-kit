@@ -7,7 +7,15 @@
  * push sequence, then a deployment pointer move.
  */
 
-import { loadEnvs, resolveEnv, saveEnvs, EnvsError, type EnvEntry, type LoadEnvsOptions } from './envs.ts'
+import {
+  loadEnvs,
+  resolveEnv,
+  saveEnvs,
+  EnvsError,
+  ENVS_ENV_VAR,
+  type EnvEntry,
+  type LoadEnvsOptions,
+} from './envs.ts'
 import { formatDescription, readShortSha, resolveVersion } from './version.ts'
 import { assertEnvMatch, assertProvisioned, writeClaspConfig } from './project.ts'
 import { withManifest } from './manifest.ts'
@@ -186,7 +194,14 @@ export function deploy(envName: string | undefined, options: DeployOptions = {})
       persisted = true
     } catch {
       // The deploy itself succeeded; failing to record the id must not undo it.
-      ui.warn(`could not record the deployment id in envs.json — add it manually: ${deploymentId}`)
+      // "Add it manually" has to name a destination. Under the env var there is
+      // no envs.json being read at all, so pointing at the file is a dead end.
+      ui.warn(
+        env[ENVS_ENV_VAR]
+          ? `the registry came from ${ENVS_ENV_VAR}, so there is no file to record the new deployment id in. ` +
+              `Add "deploymentId": "${deploymentId}" to "${entry.name}" wherever that variable is defined.`
+          : `could not write the new deployment id to envs.json. Add "deploymentId": "${deploymentId}" to "${entry.name}" by hand.`
+      )
     }
   }
 

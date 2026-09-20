@@ -33,12 +33,18 @@ export interface AddEnvOptions {
 export interface AddEnvResult {
   entry: EnvEntry
   created: boolean
+  /** True when --force replaced the scriptId, so the recorded pointer was dropped. */
+  deploymentCleared: boolean
 }
 
-/** `clasp --version` succeeding is the only "is it installed" signal needed. */
-function claspInstalled(): boolean {
-  const probe = spawnSync('clasp', ['--version'], { stdio: 'ignore' })
-  return !probe.error && probe.status === 0
+/** clasp's reported version, or null when it is not on PATH at all. */
+function claspVersion(): string | null {
+  const probe = spawnSync('clasp', ['--version'], {
+    encoding: 'utf-8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  })
+  if (probe.error || probe.status !== 0) return null
+  return probe.stdout.trim()
 }
 
 /**
@@ -61,14 +67,29 @@ function claspLoggedIn(): boolean {
 }
 
 function preflight(): void {
-  if (!claspInstalled()) {
+  const version = claspVersion()
+  if (version === null) {
+    // The install and the login advice have to agree: a devDependency puts clasp
+    // in node_modules/.bin only, where a bare `clasp login` cannot find it.
     throw new EnvsError(
-      'clasp is not installed or not on PATH. Install it first: "pnpm add -D @google/clasp" (or npm i -g @google/clasp).'
+      'clasp is not installed or not on PATH. Install it with "pnpm add -D @google/clasp", then run gas-app ' +
+        'through your package manager ("pnpm exec gas-app …") so node_modules/.bin is on PATH.'
+    )
+  }
+  // v2 passes every "is it installed" check and then fails deep inside clasp with
+  // nothing that names the cause: create-script was `create` in v2, and the
+  // global --json flag this tool parses every answer from is v3-only. An
+  // unparseable version is let through — a false reject is worse than a late one.
+  const major = Number.parseInt(version, 10)
+  if (!Number.isNaN(major) && major < 3) {
+    throw new EnvsError(
+      `clasp ${version} is installed, but gas-app-kit needs v3 — it relies on "create-script" and the global --json flag. ` +
+        'Upgrade with "pnpm add -D @google/clasp@^3".'
     )
   }
   if (!claspLoggedIn()) {
     throw new EnvsError(
-      'clasp is installed but not authenticated. Run "clasp login" yourself — this command never launches a browser prompt on your behalf.'
+      'clasp is installed but not authenticated. Run "pnpm exec clasp login" yourself — this command never launches a browser prompt on your behalf.'
     )
   }
 }
@@ -164,10 +185,17 @@ export function addEnv(name: string, options: AddEnvOptions = {}): AddEnvResult 
     created = true
   }
 
+  // A deploymentId points at a version of one specific script. Carried across a
+  // --force that changed the scriptId, it produces an entry where `open` prints
+  // a web app belonging to the old project and `deploy` aims a foreign pointer
+  // at the new one — both silently.
+  const sameScript = registry[name]?.scriptId === resolvedScriptId
+  const deploymentCleared = Boolean(registry[name]?.deploymentId) && !sameScript
+
   const entry: EnvEntry = {
     name,
     scriptId: resolvedScriptId,
-    deploymentId: registry[name]?.deploymentId ?? '',
+    deploymentId: sameScript ? (registry[name]?.deploymentId ?? '') : '',
     allowPrerelease: registry[name]?.allowPrerelease ?? false,
     allowLocalDeploy: registry[name]?.allowLocalDeploy ?? false,
   }
@@ -176,5 +204,5 @@ export function addEnv(name: string, options: AddEnvOptions = {}): AddEnvResult 
   registry[name] = entry
   fs.writeFileSync(file, serialize(registry))
 
-  return { entry, created }
+  return { entry, created, deploymentCleared }
 }

@@ -90,11 +90,13 @@ test('open <env> prints both URLs', () => {
   assert.match(stdout, /macros\/s\/D_DEV\/exec/)
 })
 
-test('open on an undeployed env refuses, naming it, and still offers the editor', () => {
+test('open on an undeployed env prints what exists and exits 0', () => {
+  // Same state, same information, same exit code as the argument-less listing —
+  // which is what makes `open` safe to wrap in an alias under `set -e`.
   const { status, out } = run(['open', 'staging'])
-  assert.equal(status, 1)
-  assert.match(out, /"staging" is undeployed/)
-  assert.match(out, /S_STG/)
+  assert.equal(status, 0)
+  assert.match(out, /S_STG/, 'the editor URL it does have is printed')
+  assert.match(out, /undeployed/)
 })
 
 test('open with no env prints every entry in registry order', () => {
@@ -138,7 +140,16 @@ test('envs add refuses to overwrite without --force, exiting 1', () => {
 test('an unknown envs subcommand is a usage error, not a silent listing', () => {
   const { status, out } = run(['envs', 'addd', '--script-id', 'S'])
   assert.equal(status, 2)
-  assert.match(out, /Unknown subcommand "envs addd"/)
+  assert.match(out, /"envs" takes no argument/)
+})
+
+test('the envs suggestion says that creating an environment provisions a project', () => {
+  // A "did you mean" is taken on trust, and `envs list` is a common guess. The
+  // suggestion must not send someone into creating a Drive project called "list"
+  // without saying that is what it does.
+  const { out } = run(['envs', 'list'])
+  assert.match(out, /gas-app envs\n/, 'the harmless option is offered too')
+  assert.match(out, /create a new Apps Script project named "list" in your Drive/)
 })
 
 test('--version next to a command is a usage error, not a silent no-op', () => {
@@ -165,4 +176,11 @@ test('a real flag aimed at a command that ignores it is a usage error', () => {
   const { status, out } = run(['push', 'dev', '--yes'])
   assert.equal(status, 2)
   assert.match(out, /does not take --yes/)
+})
+
+test('a filesystem failure is a refusal, not a raw Node stack trace', () => {
+  const { status, out } = run(['envs', 'add', 'qa', '--script-id', 'S_QA', '--envs', 'no/such/dir/envs.json'])
+  assert.equal(status, 1)
+  assert.match(out, /ENOENT/)
+  assert.doesNotMatch(out, /at Module\./, 'the stack trace must not reach the user')
 })
