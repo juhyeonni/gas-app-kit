@@ -4,7 +4,7 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
-import { loadEnvs, resolveEnv, envState, EnvsError, ENVS_ENV_VAR } from '../src/envs.ts'
+import { loadEnvs, saveEnvs, resolveEnv, envState, EnvsError, ENVS_ENV_VAR } from '../src/envs.ts'
 
 function fixture(contents) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gas-app-kit-'))
@@ -98,4 +98,59 @@ test('--envs path is honoured over the default location', () => {
   fs.writeFileSync(path.join(dir, 'other.json'), JSON.stringify({ elsewhere: { scriptId: 'S' } }))
   const registry = loadEnvs({ cwd: dir, envsPath: 'other.json', env: {} })
   assert.deepEqual(Object.keys(registry), ['elsewhere'])
+})
+
+test('keys this tool does not recognise survive a save', () => {
+  const cwd = fixture(
+    JSON.stringify({
+      dev: { scriptId: 'S_DEV', deploymentId: 'D_DEV', allowLocalDeploy: true, owner: 'team-a', note: 'keep me' },
+    })
+  )
+  saveEnvs(loadEnvs({ cwd, env: {} }), { cwd, env: {} })
+
+  const written = JSON.parse(fs.readFileSync(path.join(cwd, 'envs.json'), 'utf-8'))
+  assert.equal(written.dev.owner, 'team-a')
+  assert.equal(written.dev.note, 'keep me')
+  assert.equal(written.dev.scriptId, 'S_DEV')
+  assert.ok(!('name' in written.dev), 'the derived name is still never stored')
+})
+
+test('a recognised key still wins over what the file said', () => {
+  // The flags must keep failing closed; carrying unknown keys must not make a
+  // string "true" grant permission by arriving through the spread.
+  const cwd = fixture(JSON.stringify({ dev: { scriptId: ' S ', allowLocalDeploy: 'true' } }))
+  const entry = loadEnvs({ cwd, env: {} }).dev
+  assert.equal(entry.allowLocalDeploy, false)
+  assert.equal(entry.scriptId, 'S')
+})
+
+test('envs.json is found from a subdirectory', () => {
+  const root = fixture(THREE_ENVS)
+  const deep = path.join(root, 'packages', 'reporting', 'src')
+  fs.mkdirSync(deep, { recursive: true })
+
+  const registry = loadEnvs({ cwd: deep, env: {} })
+  assert.deepEqual(Object.keys(registry), ['dev', 'staging', 'production'])
+})
+
+test('a save from a subdirectory writes the registry it read, not a new one', () => {
+  const root = fixture(THREE_ENVS)
+  const deep = path.join(root, 'sub')
+  fs.mkdirSync(deep)
+
+  const registry = loadEnvs({ cwd: deep, env: {} })
+  registry.dev.deploymentId = 'D_NEW'
+  const written = saveEnvs(registry, { cwd: deep, env: {} })
+
+  assert.equal(written, path.join(root, 'envs.json'))
+  assert.equal(fs.existsSync(path.join(deep, 'envs.json')), false, 'no second registry beside the subdirectory')
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'envs.json'), 'utf-8')).dev.deploymentId, 'D_NEW')
+})
+
+test('no registry anywhere up the tree names the search, not just the file', () => {
+  const cwd = fixture(undefined)
+  assert.throws(
+    () => loadEnvs({ cwd, env: {} }),
+    (err: unknown) => err instanceof EnvsError && /any parent directory/.test((err as Error).message)
+  )
 })

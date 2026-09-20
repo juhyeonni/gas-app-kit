@@ -19,6 +19,14 @@ export interface EnvEntry {
   deploymentId: string
   allowPrerelease: boolean
   allowLocalDeploy: boolean
+  /**
+   * Anything else the entry carried in `envs.json`. The registry is a file
+   * people hand-edit — that is how `allowLocalDeploy` gets turned on — so a
+   * key this tool does not recognise is theirs, not noise, and survives a
+   * save. It is also what lets a newer version's field pass through an older
+   * one untouched.
+   */
+  [key: string]: unknown
 }
 
 /** The whole set. Key order is display order. */
@@ -38,6 +46,36 @@ export interface LoadEnvsOptions {
    * assignable to this, so nothing at a call site changes.
    */
   env?: Record<string, string | undefined>
+}
+
+/**
+ * The registry, searched from `cwd` upward to the filesystem root.
+ *
+ * git, npm, pnpm and cargo all do this, and a monorepo needs it: an Apps Script
+ * package at `packages/reporting/` was otherwise operable from its own root and
+ * nowhere else. Returns null when no ancestor has one — "create it here" and
+ * "use the one above" are different answers and the caller picks.
+ */
+function findRegistry(cwd: string): string | null {
+  let dir = path.resolve(cwd)
+  for (;;) {
+    const file = path.join(dir, ENVS_FILE)
+    if (fs.existsSync(file)) return file
+    const parent = path.dirname(dir)
+    if (parent === dir) return null
+    dir = parent
+  }
+}
+
+/**
+ * Where a write goes: the registry that was found, else a new one in `cwd`.
+ *
+ * Load and save must agree, or `envs add` run from a subdirectory reads the
+ * registry above and writes a second one beside itself.
+ */
+export function registryPath(cwd: string, envsPath?: string | undefined): string {
+  if (envsPath) return path.resolve(cwd, envsPath)
+  return findRegistry(cwd) ?? path.join(cwd, ENVS_FILE)
 }
 
 /** A refusal the CLI prints as-is. Carries no stack trace worth showing a user. */
@@ -63,6 +101,7 @@ function normalizeEntry(name: string, raw: unknown): EnvEntry {
   }
   const entry = raw as Record<string, unknown>
   return {
+    ...entry,
     name,
     scriptId: String(entry.scriptId ?? '').trim(),
     deploymentId: String(entry.deploymentId ?? '').trim(),
@@ -108,7 +147,12 @@ export function loadEnvs({
     return parseRegistry(inline, `$${ENVS_ENV_VAR}`)
   }
 
-  const file = envsPath ? path.resolve(cwd, envsPath) : path.join(cwd, ENVS_FILE)
+  const file = envsPath ? path.resolve(cwd, envsPath) : findRegistry(cwd)
+  if (file === null) {
+    throw new EnvsError(
+      `${ENVS_FILE} not found here or in any parent directory. Run "gas-app envs add <name>" first, or set $${ENVS_ENV_VAR}.`
+    )
+  }
   if (!fs.existsSync(file)) {
     const shown = path.relative(cwd, file) || ENVS_FILE
     throw new EnvsError(
@@ -116,6 +160,22 @@ export function loadEnvs({
     )
   }
   return parseRegistry(fs.readFileSync(file, 'utf-8'), path.relative(cwd, file) || ENVS_FILE)
+}
+
+/**
+ * Render the registry as it is written to disk: `name` is derived at load time
+ * and never stored, everything else round-trips verbatim.
+ *
+ * The one serializer. A second copy of it lived in envs-add.ts and had to be
+ * kept in step by hand, which is how both of them came to drop keys.
+ */
+export function serializeRegistry(registry: EnvRegistry): string {
+  const out: Record<string, Record<string, unknown>> = {}
+  for (const [name, entry] of Object.entries(registry)) {
+    const { name: _derived, ...rest } = entry
+    out[name] = rest
+  }
+  return `${JSON.stringify(out, null, 2)}\n`
 }
 
 /**
@@ -133,17 +193,8 @@ export function saveEnvs(
       `The registry is coming from $${ENVS_ENV_VAR}, so there is no file to write. Unset it to persist changes.`
     )
   }
-  const file = envsPath ? path.resolve(cwd, envsPath) : path.join(cwd, ENVS_FILE)
-  const out: Record<string, Omit<EnvEntry, 'name'>> = {}
-  for (const [name, entry] of Object.entries(registry)) {
-    out[name] = {
-      scriptId: entry.scriptId,
-      deploymentId: entry.deploymentId,
-      allowPrerelease: entry.allowPrerelease,
-      allowLocalDeploy: entry.allowLocalDeploy,
-    }
-  }
-  fs.writeFileSync(file, `${JSON.stringify(out, null, 2)}\n`)
+  const file = registryPath(cwd, envsPath)
+  fs.writeFileSync(file, serializeRegistry(registry))
   return file
 }
 
