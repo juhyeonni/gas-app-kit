@@ -9,6 +9,22 @@ import { spawnSync } from 'node:child_process'
 
 export type ClaspResult<T> = { ok: true; data: T } | { ok: false; reason: string }
 
+/**
+ * What to say when clasp cannot authenticate.
+ *
+ * clasp forwards Google's OAuth error object verbatim — `{"error":"invalid_grant",
+ * "error_description":"reauth related error (invalid_rapt)", …}` — which names
+ * neither clasp nor the command that fixes it, and reached the user as that
+ * blob. Expiry needs no action to happen, so this is the most common non-happy
+ * path in the tool's life and it deserves the same treatment as every other
+ * refusal here: name what to run.
+ */
+export const AUTH_REASON =
+  'clasp is not authenticated, or the session has expired. Run "clasp login" and try again.'
+
+const AUTH_FAILURE =
+  /invalid_grant|invalid_rapt|invalid_credentials|unauthorized|not (?:logged in|authenticated)|no credentials/i
+
 /** One row of `clasp list-deployments --json`. `@HEAD` carries no versionNumber. */
 export interface DeploymentRow {
   deploymentId: string
@@ -32,7 +48,11 @@ export function claspJson<T = unknown>(args: string[]): ClaspResult<T> {
     return { ok: false, reason: code === 'ENOENT' ? 'clasp not found on PATH' : result.error.message }
   }
   if (result.status !== 0) {
-    const firstLine = (result.stderr || '').trim().split('\n')[0]
+    // Not just the first line: the OAuth blob clasp prints can wrap, and the
+    // token that identifies it may not land on the line the message starts on.
+    const said = (result.stderr || '').trim()
+    const firstLine = said.split('\n')[0]
+    if (said && AUTH_FAILURE.test(said)) return { ok: false, reason: AUTH_REASON }
     return { ok: false, reason: firstLine || `clasp exited ${result.status}` }
   }
   try {
@@ -43,7 +63,9 @@ export function claspJson<T = unknown>(args: string[]): ClaspResult<T> {
     // by your domain administrator." on create-deployment, exit 0). Reporting
     // only "not JSON" there throws away the one line that says what to fix, so
     // whatever clasp did say is carried through verbatim.
-    const said = (result.stderr || result.stdout || '').trim().split('\n')[0]
+    const raw = (result.stderr || result.stdout || '').trim()
+    if (raw && AUTH_FAILURE.test(raw)) return { ok: false, reason: AUTH_REASON }
+    const said = raw.split('\n')[0]
     return {
       ok: false,
       reason: said ? `clasp reported: ${said}` : 'clasp returned output that is not JSON, and said nothing else',

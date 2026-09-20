@@ -19,6 +19,7 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { spawnSync } from 'node:child_process'
 
+import { detectPackageManager } from './project.ts'
 import { createUI } from './ui.mjs'
 
 export type CheckStatus = 'passed' | 'failed' | 'degraded' | 'absent'
@@ -113,8 +114,13 @@ function hasScript(cwd: string, name: string): boolean {
 }
 
 function runScript(cwd: string, name: string): boolean {
+  const packageManager = detectPackageManager(cwd)
+  // yarn berry rejects an unrecognised flag rather than ignoring it, and
+  // `--silent` is not one of its run options. Two banner lines beat a gate that
+  // fails to start.
+  const args = packageManager === 'yarn' ? ['run', name] : ['run', '--silent', name]
   // Output is the product on failure — forward it verbatim.
-  const result = spawnSync('npm', ['run', '--silent', name], { cwd, stdio: 'inherit' })
+  const result = spawnSync(packageManager, args, { cwd, stdio: 'inherit' })
   return !result.error && result.status === 0
 }
 

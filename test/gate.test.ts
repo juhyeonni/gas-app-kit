@@ -153,3 +153,66 @@ test('missing typecheck or test scripts are reported as absent, not failures', (
   assert.equal(statusOf(result, 'test'), 'absent')
   assert.equal(result.passed, true)
 })
+
+/**
+ * A fake package-manager binary on PATH that records how it was invoked.
+ * `runGate` inherits stdio, so the fake must log to a file rather than stdout.
+ */
+function fakePackageManager(cwd: string, name: string) {
+  const bin = path.join(cwd, 'fakebin')
+  fs.mkdirSync(bin, { recursive: true })
+  const log = path.join(cwd, `${name}-calls.txt`)
+  fs.writeFileSync(
+    path.join(bin, name),
+    `#!/usr/bin/env node
+require('fs').appendFileSync(${JSON.stringify(log)}, process.argv.slice(2).join(' ') + '\\n')
+process.exit(0)
+`,
+    { mode: 0o755 }
+  )
+  return log
+}
+
+function withFakeBin<T>(cwd: string, fn: () => T): T {
+  const previous = process.env.PATH
+  process.env.PATH = `${path.join(cwd, 'fakebin')}:${previous ?? ''}`
+  try {
+    return fn()
+  } finally {
+    process.env.PATH = previous
+  }
+}
+
+test('the gate runs the project’s package manager, not npm', () => {
+  const cwd = consumer({ typecheck: PASS, test: PASS })
+  fs.writeFileSync(path.join(cwd, 'pnpm-lock.yaml'), '')
+  const log = fakePackageManager(cwd, 'pnpm')
+
+  const result = withFakeBin(cwd, () => runGate({ cwd, env: {} }))
+
+  assert.equal(result.passed, true)
+  const calls = fs.readFileSync(log, 'utf-8').trim().split('\n')
+  assert.deepEqual(calls, ['run --silent typecheck', 'run --silent test'])
+})
+
+test('yarn is run without --silent, which yarn berry rejects', () => {
+  const cwd = consumer({ typecheck: PASS, test: PASS })
+  fs.writeFileSync(path.join(cwd, 'yarn.lock'), '')
+  const log = fakePackageManager(cwd, 'yarn')
+
+  withFakeBin(cwd, () => runGate({ cwd, env: {} }))
+
+  assert.deepEqual(fs.readFileSync(log, 'utf-8').trim().split('\n'), ['run typecheck', 'run test'])
+})
+
+test('the packageManager field beats the lockfile', () => {
+  const cwd = consumer({ typecheck: PASS, test: PASS })
+  fs.writeFileSync(path.join(cwd, 'pnpm-lock.yaml'), '')
+  const pkg = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf-8'))
+  fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ ...pkg, packageManager: 'yarn@4.1.0' }))
+  const log = fakePackageManager(cwd, 'yarn')
+
+  withFakeBin(cwd, () => runGate({ cwd, env: {} }))
+
+  assert.ok(fs.existsSync(log), 'yarn was the runner, despite the pnpm lockfile')
+})

@@ -14,16 +14,26 @@ interface Version {
   description: string
 }
 
-/** Current version of `entry.deploymentId`, or null if it cannot be determined. */
-function currentVersion(entry: EnvEntry): Version | null {
+/**
+ * Current version of `entry.deploymentId`, with why it could not be read.
+ *
+ * The reason is carried rather than discarded: every env degrading to
+ * "deployed (version unknown)" under a fixed "could not read deployments"
+ * line never said the cause was an expired session, or that `clasp login`
+ * fixes it.
+ */
+function currentVersion(entry: EnvEntry): { version: Version | null; reason?: string } {
   const result = listDeployments(entry.scriptId)
-  if (!result.ok || !Array.isArray(result.data)) return null
+  if (!result.ok) return { version: null, reason: result.reason }
+  if (!Array.isArray(result.data)) return { version: null, reason: 'clasp returned no deployment list' }
 
   const match = result.data.find((d) => d.deploymentId === entry.deploymentId)
   // No versionNumber means the implicit @HEAD deployment — never "a version".
-  if (!match || match.versionNumber === undefined || match.versionNumber === null) return null
+  if (!match || match.versionNumber === undefined || match.versionNumber === null) {
+    return { version: null }
+  }
 
-  return { versionNumber: match.versionNumber, description: match.description ?? '' }
+  return { version: { versionNumber: match.versionNumber, description: match.description ?? '' } }
 }
 
 export function envsCommand(options: LoadEnvsOptions = {}): number {
@@ -45,12 +55,12 @@ export function envsCommand(options: LoadEnvsOptions = {}): number {
     let detail: string = state
 
     if (state === 'deployed') {
-      const version = currentVersion(entry)
+      const { version, reason } = currentVersion(entry)
       if (version) {
         detail = `@${version.versionNumber}${version.description ? ` (${version.description})` : ''}`
       } else {
         detail = 'deployed (version unknown)'
-        degraded ??= 'could not read deployments from clasp'
+        if (reason) degraded ??= reason
       }
     }
 
