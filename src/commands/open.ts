@@ -1,12 +1,14 @@
 /**
  * `gas-app open [env]` — print the editor and web-app URLs.
  *
- * With an env: refuse if it has no deployment. Without one: print every entry
- * in registry key order, marking the ones that have nothing to open.
+ * Both forms report state rather than judging it: an env with no deployment is
+ * printed and exits 0, same as it always has in the argument-less listing. Only
+ * an env with no scriptId at all refuses, because there is nothing to print.
  */
 
 import { loadEnvs, resolveEnv, EnvsError, type EnvEntry, type LoadEnvsOptions } from '../envs.ts'
 import { editorUrl, webAppUrl } from '../links.ts'
+import { createUI } from '../ui.mjs'
 
 function printEntry(entry: EnvEntry, width = 0): void {
   const label = width ? entry.name.padEnd(width) : entry.name
@@ -37,11 +39,13 @@ export function openCommand(name: string | undefined, options: LoadEnvsOptions =
   if (!entry.scriptId) {
     throw new EnvsError(`Environment "${name}" is unprovisioned — no script to open.`)
   }
-  if (!entry.deploymentId) {
-    throw new EnvsError(
-      `Environment "${name}" is undeployed — no web app to open. Editor: ${editorUrl(entry.scriptId)}`
-    )
-  }
+  // "Not deployed yet" is a state, not a failure: the argument-less form of this
+  // same command has always printed it and exited 0. Exiting 1 here broke every
+  // alias and script wrapping `open` under `set -e`, for an env whose editor URL
+  // was printed successfully.
   printEntry(entry)
+  if (!entry.deploymentId) {
+    createUI('gas-app open').info(`undeployed — run "gas-app deploy ${name}" to create a web-app URL`)
+  }
   return 0
 }

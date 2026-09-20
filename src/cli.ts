@@ -186,10 +186,26 @@ function main(argv: string[]): number {
       ui.item(
         `${result.created ? 'created' : 'registered'} "${name}" → ${result.entry.scriptId}`
       )
+      if (result.deploymentCleared) {
+        ui.warn(
+          `the scriptId changed, so the recorded deploymentId was dropped — it pointed at the previous script. ` +
+            `"gas-app deploy ${name}" will create a new deployment.`
+        )
+      }
       return EXIT_OK
     }
     if (envName) {
-      process.stderr.write(`Unknown subcommand "envs ${envName}". Did you mean "envs add ${envName}"?\n`)
+      // The old suggestion was "envs add <whatever they typed>", which provisions
+      // a real Apps Script project in the user's Drive. "envs list" is among the
+      // first things anyone guesses, and a "did you mean" is taken on trust — so
+      // offer both, and say what the creating one actually does.
+      process.stderr.write(
+        `"envs" takes no argument — it lists every environment. Did you mean:\n` +
+          `  gas-app envs\n` +
+          `      list every registered environment\n` +
+          `  gas-app envs add ${envName}\n` +
+          `      create a new Apps Script project named "${envName}" in your Drive, and register it\n`
+      )
       return EXIT_USAGE
     }
     return envsCommand(context)
@@ -251,8 +267,17 @@ function main(argv: string[]): number {
 try {
   process.exitCode = main(process.argv.slice(2))
 } catch (err) {
+  const errno = err as NodeJS.ErrnoException
   if (err instanceof EnvsError) {
     createUI('gas-app').error(err.message)
+    process.exitCode = EXIT_FAIL
+  } else if (errno.code !== undefined && errno.syscall !== undefined) {
+    // A read-only checkout, an unwritable --envs path or a full disk reached the
+    // user as a raw Node stack trace. It is still a refusal, so it exits like
+    // one. What was or was not written is deliberately not claimed here.
+    createUI('gas-app').error(
+      `${errno.code}: ${errno.syscall} failed${errno.path ? ` on ${errno.path}` : ''}. Check the path and its permissions.`
+    )
     process.exitCode = EXIT_FAIL
   } else {
     throw err
